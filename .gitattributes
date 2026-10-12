@@ -1,0 +1,4 @@
+# Shell scripts must stay LF: bash rejects CRLF line endings ($'\r': command not found).
+install.sh      text eol=lf
+*.sh            text eol=lf
+hooks/scripts/* text eol=lf

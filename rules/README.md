@@ -41,14 +41,14 @@ Role combinations:
 
 ## Installation
 
-The catalog here is canonical; installed copies are disposable and regenerated, never edited in place.
+The catalog here is canonical; installed copies are disposable and regenerated, never edited in place. `install.sh` installs the selected packs (`--packs all | api | web | reviewer | <list>`) and translates `appliesTo` per harness:
 
-- **GitHub Copilot** — copy each rule to `.github/instructions/<pack>-<name>.instructions.md` and translate `appliesTo` into the `applyTo` frontmatter key.
-- **Claude Code** — copy selected packs to `.claude/rules/` and translate `appliesTo` into the `paths` frontmatter key, or import pack files from `CLAUDE.md`.
-- **Codex and other AGENTS.md readers** — link the packs from the root `AGENTS.md`; the contract file already points here.
-- **Cursor** — convert to `.cursor/rules/*.mdc` and translate `appliesTo` into rule `globs`.
+- **GitHub Copilot** — `.github/instructions/<pack>-<name>.instructions.md` with `applyTo`.
+- **Claude Code** — `.claude/rules/<pack>-<name>.md` with a `paths` list (omitted for `**/*` rules, which then load unconditionally).
+- **Codex and other AGENTS.md readers** — no scoped-rule mechanism; the packs stay in the vendored catalog and are reached through the root `AGENTS.md` links.
+- **Cursor** — `.cursor/rules/<pack>-<name>.mdc` with `globs` + `alwaysApply`.
 
-Exact per-harness destinations and steps live in [../docs/install.md](../docs/install.md); verify against each harness's current documentation when installing.
+Details and the manual equivalent live in [../docs/install.md](../docs/install.md).
 
 ## Index
 

@@ -29,11 +29,11 @@ The body has three fixed parts: what it activates (skill/agent links), **Inputs*
 
 ## Installation
 
-The catalog here is canonical; installed copies are regenerated, never edited.
+The catalog here is canonical; installed copies are regenerated, never edited. `install.sh` installs commands as:
 
-- **GitHub Copilot** — copy each file to `.github/prompts/<name>.prompt.md` (`$ARGUMENTS` maps to the prompt input); prompt files are deprecated for Agent Host sessions — prefer installing commands as skills.
-- **Claude Code** — copy to `.claude/commands/<name>.md`; `$ARGUMENTS` is native.
-- **Codex** — custom prompts are deprecated; install each command as a skill in `.agents/skills/<name>/`.
-- **Cursor** — slash commands merged into skills; install as skills for `/<name>` invocation.
+- **Claude Code** — `.claude/commands/<name>.md`; `argument-hint` and `$ARGUMENTS` are native.
+- **GitHub Copilot** — skills in `.github/skills/<name>/` (prompt files are deprecated for Agent Host sessions).
+- **Codex** — skills in `.agents/skills/<name>/` (custom prompts are deprecated).
+- **Cursor** — skills in `.cursor/skills/<name>/` for `/<name>` invocation.
 
-Exact destinations and steps live in [../docs/install.md](../docs/install.md); verify against each harness's current documentation when installing.
+Where a command is installed as a skill and a skill of the same name exists (`add-module`, `version-endpoint`), the command is skipped — the skill is its target. Details live in [../docs/install.md](../docs/install.md).

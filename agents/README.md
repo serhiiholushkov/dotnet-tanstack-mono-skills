@@ -31,11 +31,11 @@ Typical review pass on a full vertical: `boundary-auditor` always, `contract-rev
 
 ## Installation
 
-The catalog here is canonical; installed copies are regenerated, never edited.
+The catalog here is canonical; installed copies are regenerated, never edited. `install.sh` maps the canonical `tools` shorthand per harness:
 
-- **GitHub Copilot** — copy each file to `.github/agents/<name>.agent.md`; map `tools` to the Copilot tool list.
-- **Claude Code** — copy to `.claude/agents/<name>.md`; map `tools` to Claude's subagent `tools` field (reviewers: read-only tools plus Bash for the listed commands).
-- **Codex** — no separate subagent directory; expose each agent as a role prompt referenced from `AGENTS.md`.
-- **Cursor** — recreate each as a custom mode with equivalent tool restrictions.
+- **GitHub Copilot** — `.github/agents/<name>.agent.md`; `read`, `search`, `execute` are native tool aliases and pass through.
+- **Claude Code** — `.claude/agents/<name>.md`; `read`→`Read`, `search`→`Grep, Glob`, `execute`→`Bash`.
+- **Codex** — no subagent directory; each agent becomes a skill in `.agents/skills/<name>/` with its read-only scope stated in the body.
+- **Cursor** — no agent-file directory; each agent becomes a skill in `.cursor/skills/<name>/` the same way.
 
-Exact destinations and steps live in [../docs/install.md](../docs/install.md); verify against each harness's current documentation when installing.
+Details live in [../docs/install.md](../docs/install.md).

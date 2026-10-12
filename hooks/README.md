@@ -30,6 +30,8 @@ Verify against each harness's current documentation before wiring; hook runtimes
 
 ## Wiring snippets
 
+`install.sh --hooks` writes the three harness configs below when they do not exist yet, and `--git-hooks` installs the git pre-commit / pre-push pair; both print the snippet instead of touching a file you already own. The snippets are kept here for manual wiring and for merging into existing configs.
+
 **git pre-commit** (any harness, `.git/hooks/pre-commit` or a hook manager):
 
 ```sh
@@ -86,4 +88,4 @@ harness/hooks/scripts/format-gate || exit 1
 }
 ```
 
-Paths assume the catalog lives at `harness/` in the consuming repository; adjust when it is copied elsewhere. `verify-gate` on pre-push or session-end is a cost/latency trade-off each team makes — CI runs it regardless.
+Paths assume the catalog lives at `harness/` in the consuming repository (the installer's default `--dir`); adjust when it is copied elsewhere. `verify-gate` on pre-push or session-end is a cost/latency trade-off each team makes — CI runs it regardless.
