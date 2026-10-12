@@ -8,6 +8,6 @@
 2. **Installer** — in `install.sh`, remove `install_agents`, `install_commands`, their calls in `run_install`, the `agents`/`commands` entries in `CATALOG_ITEMS`, the `n_agents`/`n_commands` counters, and the collision warning. Remove `.claude/commands`, `.claude/agents`, `.github/agents` from the generated layout.
 3. **Tests** — in `tests/install.test.sh`, delete the agent/command assertions (`.claude/agents`, `.github/agents`, `.claude/commands`, `*/skills/plan`, `*/skills/planner`, the collision log check) and adjust the expected counts.
 4. **Docs** — update `AGENTS.md` (Catalog table, "Follow the matching skill" wording), `README.md` (Catalog table, Layout tree), `docs/install.md` (mapping and translation tables, harness notes), `docs/usage.md`, `rules/README.md`, `skills/README.md`, `templates/README.md`, and `templates/feature-spec.template.md` — all reference `commands/`, `agents/`, `/plan`, or the reviewer names.
-5. **Verify** — `shellcheck -s bash install.sh tests/install.test.sh` and `bash tests/install.test.sh` must pass; the suite asserts every generated link resolves, so any stale reference to a removed file will surface there.
+5. **Verify** — `bash tests/install.test.sh` must pass; the suite asserts every generated link resolves, so any stale reference to a removed file will surface there.
 
 Delete this file when done.
