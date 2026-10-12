@@ -202,7 +202,9 @@ if "$installer" --target "$t3" --uninstall > "$work/v5.log" 2>&1; then ko "unins
 # ---------------------------------------------------------------------------
 section "piped mode clones the catalog (curl | bash)"
 t4="$work/t4"; mkdir -p "$t4"
-if HARNESS_REPO="$repo" bash -s -- --target "$t4" --harness codex < "$installer" > "$work/t4.log" 2>&1; then
+# Run from the catalog root on purpose: a piped script must still clone rather than
+# mistake the current directory for its own checkout (regressed on bash 5 in CI).
+if (cd "$repo" && HARNESS_REPO="$repo" bash -s -- --target "$t4" --harness codex < "$installer") > "$work/t4.log" 2>&1; then
   ok "piped install exited zero"
 else
   cat "$work/t4.log" >&2; ko "piped install exited non-zero"

@@ -185,7 +185,9 @@ resolve_source() {
     src="$(cd "$source_arg" && pwd -P)"
     src_label="$src"
   else
-    if [ -n "${BASH_SOURCE[0]:-}" ] && [ "${BASH_SOURCE[0]}" != "bash" ]; then
+    # When the script is piped (curl | bash), BASH_SOURCE[0] is empty or a
+    # placeholder that is not a real file; only a real file names a checkout.
+    if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
       script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P || true)"
     fi
     if [ -n "$script_dir" ] && looks_like_catalog "$script_dir"; then
