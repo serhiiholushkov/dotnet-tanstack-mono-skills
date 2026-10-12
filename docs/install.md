@@ -1,64 +1,100 @@
-# Installation guide — mapping the catalog to your harness
+# Installation guide — `install.sh`
 
-This catalog is harness-agnostic; harnesses read from harness-specific locations. Installing means copying (or generating) artifacts from here into those locations and translating frontmatter where the target uses a different key.
+The catalog is harness-agnostic; harnesses read from harness-specific locations with harness-specific frontmatter. `install.sh` (at the catalog root) does that translation in one pass for Claude Code, GitHub Copilot / VS Code, Codex, and Cursor.
 
-**The single-source rule.** The catalog is canonical. Installed copies are disposable build outputs: regenerate them from the catalog, never edit them in place, and never let them drift into a second source of truth. Treat a hand-edited installed copy the same way this architecture treats a hand-edited generated client — revert and regenerate.
+**The single-source rule.** The catalog is canonical. Installed copies are disposable build outputs: regenerate them by re-running the installer, never edit them in place, and never let them drift into a second source of truth. Treat a hand-edited installed copy the same way this architecture treats a hand-edited generated client — revert and regenerate.
 
-Harness formats change quickly. This table was verified against vendor documentation in 2026-09; re-verify before installing, especially anything marked Preview or deprecated.
+## Quick start
 
-## Mapping table
+```bash
+# without cloning
+curl -fsSL https://raw.githubusercontent.com/serhiiholushkov/dotnet-tanstack-mono-skills/main/install.sh \
+  | bash -s -- --target /path/to/your-repo
 
-| Artifact | Canonical            | GitHub Copilot / VS Code                                        | Claude Code                     | Codex                                       | Cursor                                                  |
-| -------- | -------------------- | --------------------------------------------------------------- | ------------------------------- | ------------------------------------------- | ------------------------------------------------------- |
-| Contract | `AGENTS.md`          | read natively (repo root)                                       | via `CLAUDE.md` import          | read natively (root + nested + `~/.codex/`) | read natively (root + nested)                           |
-| Rules    | `rules/<pack>/*.md`  | `.github/instructions/<pack>/*.instructions.md` (`applyTo`)     | `.claude/rules/*.md` (`paths`)  | linked from `AGENTS.md`                     | `.cursor/rules/*.mdc` (`globs`, `alwaysApply`)          |
-| Skills   | `skills/<name>/`     | `.github/skills/<name>/`                                        | `.claude/skills/<name>/`        | `.agents/skills/<name>/`                    | `.cursor/skills/<name>/` (also reads `.claude/skills/`) |
-| Agents   | `agents/<name>.md`   | `.github/agents/<name>.agent.md`                                | `.claude/agents/<name>.md`      | role prompts / subagent config — see below  | custom modes — see below                                |
-| Commands | `commands/<name>.md` | `.github/prompts/<name>.prompt.md` (deprecated → prefer skills) | `.claude/commands/<name>.md`    | skills (custom prompts are deprecated)      | skills (slash commands merged into skills)              |
-| Hooks    | `hooks/scripts/`     | `.github/hooks/*.json` (Preview) / git hooks / CI               | `.claude/settings.json` `hooks` | git hooks / CI (verify native hook docs)    | `.cursor/hooks.json`                                    |
+# or from a checkout
+./install.sh --target /path/to/your-repo
+```
 
-Hook wiring details and the honest support matrix live in [../hooks/README.md](../hooks/README.md); this guide covers the other five artifact kinds.
+Review the diff, commit it. Requirements: bash 3.2+, `awk`, `sed`, `find`; `git` only when the catalog has to be fetched.
 
-## GitHub Copilot / VS Code
+## Options
 
-1. **Contract** — `AGENTS.md` at the repository root is read natively (`chat.useAgentsMdFile`). `CLAUDE.md` is also detected, so the shim causes no conflict — both point at the same content.
-2. **Rules** — copy each rule to `.github/instructions/<pack>-<name>.instructions.md` (subfolders are allowed; discovery is recursive). Keep `title`/`description`; translate `appliesTo` to the `applyTo` frontmatter key (glob relative to the workspace root, comma-separated patterns supported). Rules without a matching `applyTo` are not auto-applied.
-3. **Skills** — copy each skill folder to `.github/skills/<name>/` unchanged, including `references/`.
-4. **Agents** — copy each agent to `.github/agents/<name>.agent.md`. Map the canonical `tools` shorthand to Copilot tool names (reviewers: read/search tools plus terminal for the listed read-only commands; no edit tools).
-5. **Commands** — prompt files (`.github/prompts/<name>.prompt.md`, `$ARGUMENTS` → prompt input) still work for the local agent but are **deprecated for Agent Host sessions**. Prefer installing each command as a skill folder (`.github/skills/<name>/SKILL.md`); the body already reads as an instruction to route to the target skill/agent.
-6. **Monorepo note** — if the repo is opened from a subfolder, enable `chat.useCustomizationsInParentRepositories`.
+| Option            | Default            | Effect                                                                                                                      |
+| ----------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `--target DIR`    | current directory  | Consuming repository root. Refuses to install the catalog into itself.                                                     |
+| `--harness LIST`  | `all`              | Comma list of `claude`, `copilot` (alias `vscode`), `codex`, `cursor`.                                                      |
+| `--packs LIST`    | `all`              | Always-on rule packs: `all`, a role (`api`, `web`, `reviewer`), or a comma list of pack names. See [rules](../rules/README.md#packs). |
+| `--dir NAME`      | `harness`          | Folder name for the vendored catalog inside the target.                                                                     |
+| `--hooks`         | off                | Write harness hook configs when absent: `.claude/settings.json`, `.github/hooks/guards.json`, `.cursor/hooks.json`.         |
+| `--git-hooks`     | off                | Install `pre-commit` (generated-file guard + format gate) and `pre-push` (verify gate) into `.git/hooks`.                    |
+| `--no-root`       | off                | Leave `AGENTS.md` / `CLAUDE.md` at the target root alone.                                                                   |
+| `--force`         | off                | Overwrite an existing root `AGENTS.md` / `CLAUDE.md` that the installer did not generate.                                   |
+| `--source DIR`    | script's directory | Use another catalog checkout as the source.                                                                                 |
+| `--ref REF`       | default branch     | Branch or tag to clone when fetching (`curl \| bash` mode).                                                                 |
+| `--dry-run`       | off                | Print every path that would be written; change nothing.                                                                     |
+| `--uninstall`     | off                | Remove everything recorded in `<dir>/.install-manifest` from the previous run.                                              |
+| `HARNESS_REPO`    | this repository    | Environment variable: clone URL used when the catalog is fetched.                                                           |
 
-## Claude Code
+Role shortcuts for `--packs`: `api` = `common,csharp,dotnet-api,testing`; `web` = `common,typescript,web,testing`; `reviewer` = `common,monorepo`.
 
-1. **Contract** — place `CLAUDE.md` (containing `@AGENTS.md`) and `AGENTS.md` at the repository root.
-2. **Rules** — copy selected packs to `.claude/rules/<pack>-<name>.md`; translate `appliesTo` to the `paths` frontmatter key (array of globs; omitted = always loaded). Alternatively import pack files from `CLAUDE.md` for always-on packs.
-3. **Skills** — copy each skill folder to `.claude/skills/<name>/` unchanged. The `name`/`description` frontmatter is already in Claude's expected shape.
-4. **Agents** — copy each agent to `.claude/agents/<name>.md`. Frontmatter `name`, `description`, `tools` are native; map `tools` to Claude tool names (e.g. reviewers: `Read, Grep, Glob, Bash` where Bash is limited to the read-only commands the agent lists).
-5. **Commands** — copy each command to `.claude/commands/<name>.md`; `$ARGUMENTS` and `argument-hint` are native. (Skills have absorbed commands in Claude Code; either location works, commands keep explicit-invocation semantics.)
-6. **Hooks** — wire per [../hooks/README.md](../hooks/README.md) in `.claude/settings.json`.
+## What lands where
 
-## Codex
+Everything below is relative to `--target`; `harness/` is the `--dir` name.
 
-1. **Contract** — `AGENTS.md` is Codex's native format: repository root (merged with nested `AGENTS.md` files walking down to the working directory, ~32 KiB combined budget). Personal defaults go to `~/.codex/AGENTS.md`.
-2. **Rules** — no glob-scoped rule mechanism is pinned here; keep the packs in the repo and link them from `AGENTS.md` (the catalog's `AGENTS.md` already points at `rules/`). Mind the instructions byte budget — link, do not inline packs.
-3. **Skills** — copy each skill folder to `.agents/skills/<name>/` at the repository root (Codex scans `.agents/skills` from the working directory up to the repo root; user-level: `~/.agents/skills/`). The SKILL.md `name` + `description` frontmatter is the same open agent-skills format. Invoke with `$<name>` or `/skills`.
-4. **Agents** — Codex has subagent configuration but no drop-in agent-file directory pinned here; expose each agent as a skill or role prompt referenced from `AGENTS.md`, and check the current subagents documentation when installing.
-5. **Commands** — custom prompts (`~/.codex/prompts/*.md`) are **deprecated**; install commands as skills (step 3) so they are repo-shared and invocable.
-6. **Hooks** — Codex documents a hooks feature; its schema is not pinned here. Use git hooks + CI as the portable path and verify current docs.
+| Artifact | Canonical            | `harness/` (always) | Claude Code                    | GitHub Copilot / VS Code                                      | Codex                                   | Cursor                                   |
+| -------- | -------------------- | ------------------- | ------------------------------ | ------------------------------------------------------------- | --------------------------------------- | ---------------------------------------- |
+| Contract | `AGENTS.md`          | `harness/AGENTS.md` | `CLAUDE.md` → `@AGENTS.md`     | root `AGENTS.md` (native)                                     | root `AGENTS.md` (native)               | root `AGENTS.md` (native)                |
+| Rules    | `rules/<pack>/*.md`  | verbatim            | `.claude/rules/<pack>-<name>.md` (`paths`) | `.github/instructions/<pack>-<name>.instructions.md` (`applyTo`) | linked from `AGENTS.md` only   | `.cursor/rules/<pack>-<name>.mdc` (`globs`, `alwaysApply`) |
+| Skills   | `skills/<name>/`     | verbatim            | `.claude/skills/<name>/`       | `.github/skills/<name>/`                                      | `.agents/skills/<name>/`                | `.cursor/skills/<name>/`                 |
+| Agents   | `agents/<name>.md`   | verbatim            | `.claude/agents/<name>.md`     | `.github/agents/<name>.agent.md`                              | `.agents/skills/<name>/SKILL.md`        | `.cursor/skills/<name>/SKILL.md`         |
+| Commands | `commands/<name>.md` | verbatim            | `.claude/commands/<name>.md`   | `.github/skills/<name>/SKILL.md`                              | `.agents/skills/<name>/SKILL.md`        | `.cursor/skills/<name>/SKILL.md`         |
+| Hooks    | `hooks/scripts/`     | verbatim, executable | `.claude/settings.json` (`--hooks`) | `.github/hooks/guards.json` (`--hooks`, Preview)        | git hooks (`--git-hooks`)               | `.cursor/hooks.json` (`--hooks`)         |
 
-## Cursor
+The root `AGENTS.md` is the catalog contract with its links re-pointed into `harness/`; the first line is a marker comment so the installer can tell its own copy from a hand-written one.
 
-1. **Contract** — `AGENTS.md` at the repository root is read natively; nested `AGENTS.md` files are supported.
-2. **Rules** — convert each rule to `.cursor/rules/<pack>-<name>.mdc` (the `.mdc` extension is required; plain `.md` is ignored). Translate: `description` stays; `appliesTo` → `globs` (comma-separated); set `alwaysApply: true` only for the `common` pack digest — glob-scoped rules use `alwaysApply: false` + `globs`.
-3. **Skills** — copy each skill folder to `.cursor/skills/<name>/`, or rely on Cursor's compatibility loading of `.claude/skills/` and `.agents/skills/` if another harness is already installed — one installed copy is enough. Skills are invoked with `/<name>` or `@<name>`.
-4. **Agents** — no drop-in agent-file directory; recreate each agent as a custom mode with equivalent tool restrictions, or install them as skills whose body instructs the read-only scope. Check current docs.
-5. **Commands** — slash commands merged into skills; installing the command files as skills gives `/<name>` invocation directly.
-6. **Hooks** — wire per [../hooks/README.md](../hooks/README.md) in `.cursor/hooks.json`.
+## What the installer translates
 
-## Generic AGENTS.md-reading harness
+**Frontmatter.** The catalog uses one neutral shape per kind; the installer rewrites the keys each harness expects and leaves the body untouched.
 
-Minimum viable install: copy the whole catalog into the repo (e.g. as `harness/`), symlink or copy `AGENTS.md` to the root, and add git hooks from [../hooks/scripts/](../hooks/scripts/). The contract links to rules, skills, and the architecture by relative path, so any harness that reads `AGENTS.md` and can follow links gets the full framework without translation.
+| Kind     | Canonical keys                             | Claude Code                                                    | Copilot / VS Code                              | Cursor                                                          |
+| -------- | ------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| Rule     | `title`, `description`, `appliesTo` (CSV)  | `description`, `paths:` list; `**/*` rules get no `paths` (always loaded) | `description`, `applyTo: '<csv>'`   | `description`, `globs: <csv>` + `alwaysApply: false`; `**/*` → `alwaysApply: true` |
+| Skill    | `name`, `description`                      | unchanged                                                      | unchanged                                      | unchanged                                                       |
+| Agent    | `name`, `description`, `tools` (shorthand) | `tools` mapped: `read`→`Read`, `search`→`Grep, Glob`, `execute`→`Bash` | `tools: ['read', 'search', …]` (native aliases) | skill with a read-only note; tool restriction stated in the body |
+| Command  | `name`, `description`, `argument-hint`     | `description`, `argument-hint`; `$ARGUMENTS` native            | skill (`name`, `description`)                  | skill (`name`, `description`)                                   |
+
+**Links.** Every artifact cross-references the rest of the catalog by relative path (`../../docs/architecture.md`, `../common/security.md`). A copied file would break those, so the installer resolves each relative link against the vendored catalog and rewrites it relative to the generated file's location — e.g. `.claude/skills/add-module/SKILL.md` links to `../../../harness/docs/architecture.md`. Links that stay inside a skill folder (`references/…`) are kept as they are. URLs, anchors, and absolute paths are never touched. The test suite asserts that every generated link resolves.
+
+**Name collisions.** Where commands are installed as skills (Copilot, Codex, Cursor), a command whose name matches a skill (`add-module`, `version-endpoint`) is skipped — the skill is the command's target anyway, and one folder per name is all a skills directory allows.
+
+**Root files.** `AGENTS.md` and `CLAUDE.md` at the target root are written only when absent or when the installer generated them (marker comment). A hand-written file is left alone with a warning; use `--force` to take it over. For an unmanaged `CLAUDE.md`, adding the single line `@AGENTS.md` is enough.
+
+## Hooks
+
+`--hooks` writes each harness's hook config only when the file does not exist; an existing config is never merged — the installer prints the snippet to paste instead. `--git-hooks` installs `pre-commit` and `pre-push` into `.git/hooks` unless `core.hooksPath` is set (husky, lefthook) or an unmanaged hook already exists, in which case it prints what to add. Script behaviour, the support matrix, and the CI wiring live in [../hooks/README.md](../hooks/README.md). Codex has no pinned hook schema; use git hooks and CI there.
+
+## Updating, re-installing, uninstalling
+
+Every path the installer writes is recorded in `harness/.install-manifest` together with the source revision and the options used. On the next run the installer first removes everything from that manifest, then installs fresh — renamed or removed catalog files do not linger. `--uninstall` performs only the first half.
+
+Safety rules on removal: root `AGENTS.md`/`CLAUDE.md` and git hooks are removed only if they still carry the installer's marker; a hook config (`.claude/settings.json`, …) is removed only if it is byte-identical to what the installer generated. Anything you changed stays, with a warning.
+
+To pin a version, pass `--ref <tag-or-branch>` in `curl | bash` mode or run the script from a checkout at that revision.
 
 ## Multi-harness installs
 
-Installing into several harnesses simultaneously is supported — that is why the catalog is the single source. Keep one generation script or checklist per harness, re-run it after catalog changes, and never fix an installed copy directly. Where two harnesses can read the same location (Cursor reading `.claude/skills/`, every harness reading `AGENTS.md`), prefer one shared copy over duplicates.
+Installing into several harnesses simultaneously is the default and the reason the catalog is a single source. Where two harnesses can read the same location (Cursor also loads `.claude/skills/` and `.agents/skills/`; every harness reads `AGENTS.md`), the installer still writes one copy per selected harness so that each can be removed independently; pass a narrower `--harness` list if you prefer shared copies.
+
+## Harness notes (verified 2026-09)
+
+Harness formats change quickly; re-verify before relying on anything marked Preview or deprecated. These notes explain the choices encoded in the installer and double as the manual procedure if you cannot run it.
+
+**GitHub Copilot / VS Code.** `AGENTS.md` at the root is read natively (`chat.useAgentsMdFile`); `CLAUDE.md` is also detected, so the shim causes no conflict. Instructions discovery is recursive under `.github/instructions/`; `applyTo` takes comma-separated globs relative to the workspace root. Prompt files (`.github/prompts/*.prompt.md`) are deprecated for Agent Host sessions, so commands are installed as skills. If the repo is opened from a subfolder, enable `chat.useCustomizationsInParentRepositories`. Hooks (`.github/hooks/*.json`) are Preview: matchers are ignored and tool input uses camelCase `filePath` — the guard script reads both spellings.
+
+**Claude Code.** `CLAUDE.md` imports `AGENTS.md`. Rules in `.claude/rules/*.md` scope by the `paths` list and load unconditionally without it. Skills, agents (`name`, `description`, `tools`), commands (`argument-hint`, `$ARGUMENTS`) are native. Hooks wire through `.claude/settings.json`; `PreToolUse` with matcher `Edit|Write` → `guard-generated-files --stdin-json` (exit 2 blocks the edit).
+
+**Codex.** `AGENTS.md` is the native format (root merged with nested files down to the working directory, ~32 KiB combined budget; personal defaults in `~/.codex/AGENTS.md`). No glob-scoped rule mechanism is pinned, so rules stay in `harness/rules/` and are reached through the contract's links — link, do not inline, to respect the byte budget. Skills live in `.agents/skills/<name>/` (scanned from the working directory up to the repo root; user-level `~/.agents/skills/`) and are invoked with `$<name>` or `/skills`. Custom prompts are deprecated and there is no drop-in agent directory, so commands and agents are installed as skills. Hook schema not pinned; use git hooks and CI.
+
+**Cursor.** `AGENTS.md` at the root is read natively. Rules require the `.mdc` extension; `globs` is comma-separated; `alwaysApply: true` is used only for the `**/*` rules. Skills are invoked with `/<name>` or `@<name>`; slash commands merged into skills, and there is no agent-file directory, so commands and agents are installed as skills. Hooks: `.cursor/hooks.json` (`version: 1`, `preToolUse`, exit 2 = deny).
+
+**Generic `AGENTS.md`-reading harness.** `install.sh --harness codex --no-root` gives the minimum: the vendored catalog plus skills in `.agents/skills/`. Point your harness at `harness/AGENTS.md` (or copy it to the root yourself); the contract links to rules, skills, and the architecture by relative path, so any harness that reads `AGENTS.md` and can follow links gets the full framework without further translation.

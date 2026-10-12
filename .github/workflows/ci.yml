@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint installer and tests
+        run: shellcheck -s bash install.sh tests/install.test.sh
+      - name: Lint hook scripts
+        run: shellcheck -s sh hooks/scripts/*
+
+  install:
+    name: install.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      # macOS ships bash 3.2; running the suite with /bin/bash keeps the installer
+      # honest about the oldest shell it claims to support.
+      - name: Run installer tests
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then /bin/bash tests/install.test.sh; else bash tests/install.test.sh; fi

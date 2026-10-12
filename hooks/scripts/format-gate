@@ -45,7 +45,7 @@ if [ -f apps/api/Api.slnx ]; then
   fi
   if [ "$mode" = all ] || [ -n "${cs_args# }" ]; then
     command -v dotnet >/dev/null 2>&1 || { echo "format-gate: dotnet not found" >&2; exit 64; }
-    # shellcheck disable=SC2086 — word splitting of the include list is intended
+    # shellcheck disable=SC2086 # word splitting of the include list is intended
     if ! (cd apps/api && dotnet format Api.slnx --verify-no-changes ${cs_args:+--include $cs_args}); then
       echo "format-gate: C# formatting needed — run: (cd apps/api && dotnet format Api.slnx)" >&2
       fail=1
@@ -59,7 +59,7 @@ if [ "$mode" = staged ]; then
     -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.json' '*.css' '*.md' '*.yml' '*.yaml')
   if [ -n "$ts_files" ]; then
     command -v pnpm >/dev/null 2>&1 || { echo "format-gate: pnpm not found" >&2; exit 64; }
-    # shellcheck disable=SC2086 — file list is newline-safe for typical repo paths
+    # shellcheck disable=SC2086 # file list is newline-safe for typical repo paths
     if ! pnpm exec prettier --check --ignore-unknown $ts_files; then
       echo "format-gate: Prettier formatting needed — run: pnpm exec prettier --write <files>" >&2
       fail=1

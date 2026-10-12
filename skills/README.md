@@ -34,11 +34,11 @@ Harnesses discover skills by their frontmatter `description`. When a task matche
 
 ## Installation
 
-The catalog here is canonical; installed copies are regenerated, never edited.
+The catalog here is canonical; installed copies are regenerated, never edited. `install.sh` copies every skill folder (including `references/`) and rewrites links that leave the folder so they point back into the vendored catalog:
 
-- **GitHub Copilot** — copy each folder to `.github/skills/<name>/`.
-- **Claude Code** — copy to `.claude/skills/<name>/`.
-- **Codex** — copy to `.agents/skills/<name>/` (repo-shared; user-level `~/.agents/skills/`).
-- **Cursor** — copy to `.cursor/skills/<name>/`, or rely on its compatibility loading of `.claude/skills/` and `.agents/skills/`.
+- **GitHub Copilot** — `.github/skills/<name>/`.
+- **Claude Code** — `.claude/skills/<name>/`.
+- **Codex** — `.agents/skills/<name>/` (repo-shared; user-level `~/.agents/skills/` is not managed by the installer).
+- **Cursor** — `.cursor/skills/<name>/`.
 
-Exact destinations and translation steps live in [../docs/install.md](../docs/install.md); verify against each harness's current documentation when installing.
+Details live in [../docs/install.md](../docs/install.md).
