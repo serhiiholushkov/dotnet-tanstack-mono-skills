@@ -67,7 +67,7 @@ Never weaken a gate to pass it: no skipped tests, no loosened lint rules, no `--
 ## Agent conduct
 
 - Prefer the smallest change that preserves the boundaries; do not refactor beyond the task.
-- Follow the matching skill when one exists (see [skills/README.md](skills/README.md)); plan multi-slice work before editing.
+- Follow the matching skill when one exists (see [skills/README.md](skills/README.md)); plan multi-slice work with `plan-feature` before editing and review the result with `review-changes` before merge.
 - Decisions listed under ADR Triggers in the architecture are never yours alone — surface them and stop.
 - Cite the architecture section or rule you are applying when reviewers ask why.
 - When a command fails, diagnose against [skills/fix-verify-failures](skills/fix-verify-failures/SKILL.md) instead of retrying blindly.
@@ -78,8 +78,6 @@ Never weaken a gate to pass it: no skipped tests, no loosened lint rules, no `--
 | -------------------------------------------- | ------------------------------------------------------ |
 | [docs/architecture.md](docs/architecture.md) | The normative architecture — the authority             |
 | [rules/](rules/README.md)                    | Always-loaded standards, installable per role as packs |
-| [skills/](skills/README.md)                  | On-demand procedures for repeatable stack tasks        |
-| [agents/](agents/README.md)                  | Planner and read-only reviewers to delegate to         |
-| [commands/](commands/README.md)              | Entry points routing to skills and agents              |
+| [skills/](skills/README.md)                  | On-demand procedures: build, plan, review, repair      |
 | [hooks/](hooks/README.md)                    | Deterministic guards on harness/git events             |
 | [templates/](templates/README.md)            | ADR, glossary, feature-spec seeds                      |

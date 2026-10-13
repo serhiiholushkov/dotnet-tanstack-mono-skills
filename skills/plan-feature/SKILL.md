@@ -1,11 +1,18 @@
 ---
 name: plan-feature
-description: 'Turn a feature request into a reviewable implementation plan before any code: owning module and web feature, affected layers, contract impact, data impact, ADR triggers, and a test plan. Use when starting nontrivial work, when asked to plan/estimate/break down a feature, or before touching more than one slice. Trigger terms: plan, break down, design, feature request, scope, implementation plan.'
+description: 'Turn a feature request into a reviewable implementation plan before any code: owning module and web feature, affected layers, contract impact, data impact, ADR triggers, and a test plan. Use when starting nontrivial work, when asked to plan, estimate, design, or break down a feature, when a request spans the API and the web app or more than one slice, or when it is unclear which module owns the data — even if the user asks you to "just implement it". Read-only; produces the plan artifact only. Trigger terms: plan, break down, design, feature request, scope, implementation plan, approach.'
 ---
 
 # Plan a feature
 
-Produces a plan artifact a human can approve before implementation. Planning is read-only — no code edits. Authority for every classification: [../../docs/architecture.md](../../docs/architecture.md).
+Produces a plan artifact a human can approve before implementation. Authority for every classification: [../../docs/architecture.md](../../docs/architecture.md).
+
+## Ground rules
+
+- **Read-only.** Inspect the workspace, rules, and architecture; change nothing. Planning that edits "just the obvious part" removes the human's chance to redirect it cheaply. When the harness supports delegating to a read-only subagent or a fresh context, plan there — a planner that is also about to implement tends to plan around its own shortcuts.
+- **Ownership is assigned, never guessed.** Every piece of work goes to the module or feature that owns the data and rules; when that is unclear, it is an open question in the plan.
+- **Surface, do not decide.** ADR triggers become approval points. Where the architecture is silent, say so and propose options with trade-offs — do not invent policy.
+- **One artifact.** Return exactly the `## Plan` block below: no code, no diffs, no commentary around it. Approved steps are then executed by the skills the plan names, and the result reviewed with [review-changes](../review-changes/SKILL.md) before merge.
 
 ## Procedure
 

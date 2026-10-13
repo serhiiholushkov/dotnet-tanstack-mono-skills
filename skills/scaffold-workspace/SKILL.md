@@ -1,11 +1,19 @@
 ---
 name: scaffold-workspace
-description: 'Bootstrap the whole monorepo from an empty folder: root pins and workspace files, Turbo wiring, the .NET solution with Common.* projects and the Api host, the web tooling packages, api-client codegen package, the TanStack Start app, Docker Compose for PostgreSQL, and CI. Use when creating the repository, initializing the project, or asked to set up the workspace/skeleton. Trigger terms: scaffold, bootstrap, new repo, init workspace, project setup, monorepo skeleton.'
+description: 'Bootstrap the whole monorepo from an empty folder: root pins and workspace files, Turbo wiring, the .NET solution with Common.* projects and the Api host, the web tooling packages, api-client codegen package, the TanStack Start app, Docker Compose for PostgreSQL, and CI. Use whenever a repository for this stack does not exist yet — when asked to create, initialize, set up, or start a new project, app, workspace, or monorepo with .NET and React/TanStack, even if the request only names the product ("build me an ordering app") and never says "scaffold". Run it before any feature work; business modules come afterwards via add-module. Trigger terms: scaffold, bootstrap, new repo, init workspace, project setup, monorepo skeleton, greenfield, from scratch.'
 ---
 
 # Scaffold the workspace
 
-Builds the repository skeleton in verifiable stages. Every file's exact content lives in the references; this body is the order and the checks. Version numbers shown in references are pinned examples — pin to the current LTS/stable at scaffold time, but never change the majors fixed by the architecture (.NET 10, Node 24, React 19, TanStack Start 1, Tailwind 4, Turborepo 2).
+Builds the repository skeleton in verifiable stages. Every file's exact content lives in the references; this body is the order and the checks. Each stage ends with something runnable, because a skeleton assembled in one pass fails in one undiagnosable pile — a stage that does not pass its check is fixed before the next begins.
+
+Version numbers shown in references are pinned examples — pin to the current LTS/stable at scaffold time, but never change the majors fixed by the architecture (.NET 10, Node 24, React 19, TanStack Start 1, Tailwind 4, Turborepo 2). Look versions up rather than guessing: `npm view <package> version` for npm packages, `dotnet --list-sdks` for the SDK pin in `global.json`, and `dotnet package search <id> --exact-match` (or the NuGet gallery) for `Directory.Packages.props`.
+
+## Before you start
+
+- **Toolchain.** Confirm `node --version` is 24.x, `corepack enable` has made `pnpm` available (the root `packageManager` field then pins the exact version), `dotnet --version` reports a 10.x SDK, and Docker is running. Missing prerequisites are reported to the user, not worked around — the pins exist so every machine builds the same thing.
+- **Target folder.** An empty directory, or a repository holding only `README`, `LICENSE`, and `.git`. If it already contains application code, this is not a scaffold task; stop and say so.
+- **Names.** Workspace packages use the `@repo/*` scope (`@repo/api`, `@repo/web`, `@repo/api-client`, …) regardless of product name — the scope is internal and the product name belongs in the first module, not the skeleton.
 
 ## Procedure
 

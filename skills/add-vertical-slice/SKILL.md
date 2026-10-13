@@ -12,7 +12,7 @@ Adds one use case to an existing module. For a brand-new module, run [add-module
 | Question                                            | Answer decides                                                                                                                                    |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Does it change state?                               | `Command` (+ `Validator`, decorated validation) vs `Query` (validate in-handler if needed)                                                        |
-| Who owns the data?                                  | The owning module hosts the slice; needing another module's data → [cross-module-communication](../../skills/cross-module-communication/SKILL.md) |
+| Who owns the data?                                  | The owning module hosts the slice; needing another module's data → [cross-module-communication](../cross-module-communication/SKILL.md)          |
 | Does anything react to this change?                 | Raise a domain event on the entity (outbox picks it up)                                                                                           |
 | Is the read hot or expensive?                       | `HybridCache` in the handler + key in `{Module}CacheKeys` + invalidation in every write path                                                      |
 | Does the schema change?                             | Run [add-ef-migration](../add-ef-migration/SKILL.md) alongside                                                                                    |
