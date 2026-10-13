@@ -75,12 +75,11 @@ assert_file "$t1/.claude/skills/add-vertical-slice/SKILL.md"
 assert_file "$t1/.claude/skills/add-vertical-slice/references/slice-examples.md"
 assert_grep "$t1/.claude/skills/add-module/SKILL.md" "](references/module-scaffold.md)"   # in-skill link kept
 assert_grep "$t1/.claude/skills/add-module/SKILL.md" "](../../../harness/docs/architecture.md"
-assert_file "$t1/.claude/agents/boundary-auditor.md"
-assert_grep "$t1/.claude/agents/boundary-auditor.md" "^tools: Read, Grep, Glob, Bash$"
-assert_grep "$t1/.claude/agents/planner.md" "^tools: Read, Grep, Glob$"
-assert_file "$t1/.claude/commands/plan.md"
-assert_grep "$t1/.claude/commands/plan.md" "^argument-hint: <feature request or issue reference>$"
-assert_grep "$t1/.claude/commands/plan.md" '[$]ARGUMENTS'
+assert_file "$t1/.claude/skills/review-changes/references/security-checklist.md"
+assert_grep "$t1/.claude/skills/review-changes/references/boundary-checklist.md" "](../../../../harness/rules/dotnet-api/slices.md)"   # reference → catalog
+assert_grep "$t1/.claude/skills/review-changes/references/boundary-checklist.md" "](../../../../harness/skills/cross-module-communication/SKILL.md)"   # reference → sibling skill, via catalog
+assert_missing "$t1/.claude/agents"                                   # agents and commands are no longer artifact kinds
+assert_missing "$t1/.claude/commands"
 assert_file "$t1/.claude/settings.json"
 assert_grep "$t1/.claude/settings.json" '[$]{CLAUDE_PROJECT_DIR}/harness/hooks/scripts/guard-generated-files --stdin-json'
 
@@ -89,18 +88,15 @@ assert_file "$t1/.github/instructions/web-routes.instructions.md"
 assert_grep "$t1/.github/instructions/web-routes.instructions.md" "^applyTo: 'apps/web/src/routes/\*\*/\*.ts, apps/web/src/routes/\*\*/\*.tsx'$"
 assert_not_grep "$t1/.github/instructions/web-routes.instructions.md" "^title:"
 assert_file "$t1/.github/skills/regenerate-api-client/SKILL.md"
-assert_file "$t1/.github/agents/contract-reviewer.agent.md"
-assert_grep "$t1/.github/agents/contract-reviewer.agent.md" "^tools: \['read', 'search', 'execute'\]$"
-assert_file "$t1/.github/skills/plan/SKILL.md"                 # command installed as a skill
-assert_grep "$t1/.github/skills/plan/SKILL.md" "^name: plan$"
+assert_file "$t1/.github/skills/review-changes/SKILL.md"
+assert_grep "$t1/.github/skills/review-changes/SKILL.md" "^name: review-changes$"
+assert_missing "$t1/.github/agents"
 assert_missing "$t1/.github/prompts"
 assert_file "$t1/.github/hooks/guards.json"
 
 # Codex
 assert_file "$t1/.agents/skills/add-ef-migration/SKILL.md"
-assert_file "$t1/.agents/skills/planner/SKILL.md"              # agent installed as a skill
-assert_grep "$t1/.agents/skills/planner/SKILL.md" "Read-only role"
-assert_file "$t1/.agents/skills/implement/SKILL.md"
+assert_file "$t1/.agents/skills/review-changes/references/contract-checklist.md"
 assert_missing "$t1/.agents/rules"
 
 # Cursor
@@ -110,12 +106,13 @@ assert_not_grep "$t1/.cursor/rules/common-boundaries.mdc" "^globs:"
 assert_grep "$t1/.cursor/rules/dotnet-api-slices.mdc" "^globs: apps/api/src/Modules/\*\*/\*.cs$"
 assert_grep "$t1/.cursor/rules/dotnet-api-slices.mdc" "^alwaysApply: false$"
 assert_file "$t1/.cursor/skills/add-web-feature/SKILL.md"
+assert_grep "$t1/.cursor/skills/add-module/SKILL.md" "^name: add-module$"
 assert_file "$t1/.cursor/hooks.json"
 
-# Command/skill name collisions: the skill wins, the command is not duplicated as a skill
-assert_grep "$t1/.cursor/skills/add-module/SKILL.md" "^name: add-module$"
-assert_grep "$t1/.cursor/skills/add-module/SKILL.md" "Trigger terms"   # body is the skill, not the command
-assert_grep "$work/t1.log" "add-module: skill of the same name already installed; command skipped"
+# The vendored catalog carries only the current artifact kinds
+assert_missing "$t1/harness/agents"
+assert_missing "$t1/harness/commands"
+assert_grep "$work/t1.log" "Done. Installed: .* rules, 44 skills, "   # 11 skills × 4 harnesses
 
 # Git hooks
 assert_exec "$t1/.git/hooks/pre-commit"

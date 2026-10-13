@@ -1,6 +1,6 @@
 # Agent Harness: TanStack Start + .NET Modular Monolith (Vertical Slices)
 
-Rules, skills, agents, commands, and hooks that equip any coding agent (Copilot, Claude Code, Codex, Cursor) to build a TanStack Start + .NET modular-monolith monorepo.
+Rules, skills, and hooks that equip any coding agent (Copilot, Claude Code, Codex, Cursor) to build a TanStack Start + .NET modular-monolith monorepo — from scaffolding the workspace to planning, implementing, and reviewing every vertical.
 
 ## Catalog
 
@@ -10,9 +10,7 @@ Rules, skills, agents, commands, and hooks that equip any coding agent (Copilot,
 | [CLAUDE.md](CLAUDE.md)                                             | Claude Code shim — imports `AGENTS.md`                                                     | Always (Claude)             | Ready  |
 | [docs/architecture.md](docs/architecture.md)                       | The complete normative architecture every artifact cites                                   | On demand                   | Ready  |
 | [rules/](rules/README.md)                                          | Durable standards in seven opt-in packs, installed per agent role                          | Always (per installed pack) | Ready  |
-| [skills/](skills/README.md)                                        | Procedures for repeatable stack tasks (slice, module, migration, codegen, web feature, …)  | When the task matches       | Ready  |
-| [agents/](agents/README.md)                                        | Planner + read-only reviewers (boundaries, contracts, security)                            | When delegated              | Ready  |
-| [commands/](commands/README.md)                                    | Thin slash entry points routing to skills/agents                                           | When invoked                | Ready  |
+| [skills/](skills/README.md)                                        | Procedures for repeatable stack tasks: scaffold, plan, slice, module, migration, codegen, web feature, review, repair | When the task matches       | Ready  |
 | [hooks/](hooks/README.md)                                          | Deterministic guards (generated-file edits, contract drift, format, verify)                | On harness/git events       | Ready  |
 | [docs/usage.md](docs/usage.md), [docs/install.md](docs/install.md) | How to drive the framework; what `install.sh` generates per harness                        | Human reference             | Ready  |
 | [templates/](templates/README.md)                                  | ADR, glossary, and feature-spec seeds for a consuming repository                           | Copied out                  | Ready  |
@@ -46,9 +44,9 @@ Common variations:
 
 What it does, in one pass:
 
-1. Vendors the canonical catalog into `<target>/harness/` (`AGENTS.md`, `docs/`, `rules/`, `skills/`, `agents/`, `commands/`, `hooks/`, `templates/`). This stays the single source of truth inside your repo.
+1. Vendors the canonical catalog into `<target>/harness/` (`AGENTS.md`, `docs/`, `rules/`, `skills/`, `hooks/`, `templates/`). This stays the single source of truth inside your repo.
 2. Writes the always-on contract at the root: `AGENTS.md` (Copilot, Codex, Cursor read it natively) and `CLAUDE.md` (`@AGENTS.md`). Existing, hand-written root files are never overwritten without `--force`.
-3. Generates each harness's native copies — rules with translated frontmatter (`applyTo` / `paths` / `globs`), skills, agents with mapped tool lists, commands — and rewrites every relative link so it points back into `harness/`.
+3. Generates each harness's native copies — rules with translated frontmatter (`applyTo` / `paths` / `globs`) and skills — and rewrites every relative link so it points back into `harness/`.
 4. Records every path in `harness/.install-manifest`, so re-runs replace stale files and `--uninstall` is exact.
 
 Requirements: bash 3.2+, `awk`, `sed`, `find`; `git` only when the catalog is fetched. Full option reference: `./install.sh --help`; what lands where, per harness: [docs/install.md](docs/install.md).
@@ -70,9 +68,7 @@ dotnet-tanstack-mono-skills/
 │   ├── usage.md         # driving the framework
 │   └── install.md       # what install.sh generates per harness
 ├── rules/               # seven packs + README
-├── skills/              # ten procedures + README
-├── agents/              # planner + three reviewers + README
-├── commands/            # eight entry points + README
+├── skills/              # eleven procedures + README
 ├── hooks/               # four guard scripts + README
 ├── templates/           # ADR, glossary, feature-spec seeds
 └── tests/               # install.sh end-to-end tests (run in CI)

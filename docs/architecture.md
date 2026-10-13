@@ -1,6 +1,6 @@
 # Architecture: TanStack Start + .NET Modular Monolith (Vertical Slices)
 
-This document is the normative architecture for the repository. Every rule pack, skill, agent, and command in this framework derives from it; when any artifact conflicts with this document, this document wins. Follow it when adding or changing code, and prefer the smallest change that preserves these boundaries.
+This document is the normative architecture for the repository. Every rule pack and skill in this framework derives from it; when any artifact conflicts with this document, this document wins. Follow it when adding or changing code, and prefer the smallest change that preserves these boundaries.
 
 Domain examples use a reference catalog/orders vocabulary (`Catalog`, `Orders`, products). They are examples of shape, not required product concepts.
 

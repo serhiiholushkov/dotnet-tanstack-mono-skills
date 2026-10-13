@@ -1,6 +1,6 @@
 # Feature spec: {{FEATURE_NAME}}
 
-<!-- Written for a human to approve and an agent to plan from (/plan consumes this). Precise enough that the plan's ownership, contract, and data sections are derivable — not an implementation design. -->
+<!-- Written for a human to approve and an agent to plan from (the plan-feature skill consumes this). Precise enough that the plan's ownership, contract, and data sections are derivable — not an implementation design. -->
 
 - **Status:** {{Draft | Approved | Shipped}}
 - **Owner:** {{NAME}}

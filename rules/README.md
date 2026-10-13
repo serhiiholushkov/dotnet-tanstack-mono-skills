@@ -37,7 +37,7 @@ Role combinations:
 | Full-stack (default) | All seven packs                                      |
 | API-only             | `common` + `csharp` + `dotnet-api` + `testing`       |
 | Web-only             | `common` + `typescript` + `web` + `testing`          |
-| Reviewer / planner   | `common` + `monorepo` (plus read access to the rest) |
+| Reviewer / planner   | `common` + `monorepo` (plus read access to the rest) — the role that runs `plan-feature` and `review-changes` |
 
 ## Installation
 
