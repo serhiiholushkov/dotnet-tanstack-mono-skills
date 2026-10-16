@@ -45,6 +45,8 @@ src_rev=""        # commit when known
 tmp_root=""       # temp dir for clones / manifest staging
 manifest_tmp=""
 previous_manifest=""
+previous_data=""
+tracked_data=""
 seen_tmp=""
 warnings_file=""
 actions_file=""
@@ -142,7 +144,7 @@ parse_args() {
 normalize_harnesses() {
   local raw="$1" h out=""
   [ "$raw" = "all" ] && raw="$ALL_HARNESSES"
-  for h in $(printf '%s' "$raw" | tr ',' ' '); do
+  for h in ${raw//,/ }; do
     case "$h" in
       vscode | github | copilot) h="copilot" ;;
       claude | codex | cursor) ;;
@@ -162,7 +164,7 @@ normalize_packs() {
     web) raw="common typescript web testing" ;;
     reviewer) raw="common monorepo" ;;
   esac
-  for p in $(printf '%s' "$raw" | tr ',' ' '); do
+  for p in ${raw//,/ }; do
     case " $ALL_PACKS " in
       *" $p "*) ;;
       *) die "unknown rule pack '$p' (choose from: $ALL_PACKS)" ;;
@@ -254,41 +256,6 @@ resolve_target() {
   esac
 }
 
-# ---------------------------------------------------------------------------
-# Frontmatter + body helpers (single-line values only, which is all the catalog uses)
-# ---------------------------------------------------------------------------
-
-# Raw value after "key: " inside the leading frontmatter block, quotes preserved.
-fm_raw() {
-  awk -v k="$1" '
-    { sub(/\r$/, "") }
-    NR == 1 { if ($0 != "---") exit; next }
-    $0 == "---" { exit }
-    index($0, k ": ") == 1 { print substr($0, length(k) + 3); exit }
-  ' "$2"
-}
-
-strip_quotes() {
-  local v="$1"
-  case "$v" in
-    \'*\') v="${v#\'}"; v="${v%\'}" ;;
-    \"*\") v="${v#\"}"; v="${v%\"}" ;;
-  esac
-  printf '%s' "$v"
-}
-
-fm_value() { strip_quotes "$(fm_raw "$1" "$2")"; }
-
-# Everything after the closing "---"; the whole file when there is no frontmatter.
-body_of() {
-  awk '
-    { sub(/\r$/, "") }
-    NR == 1 { if ($0 != "---") { p = 1; print } ; next }
-    p { print; next }
-    $0 == "---" { p = 1 }
-  ' "$1"
-}
-
 # "a/b/c" -> "../../../"
 up_prefix() {
   local d="$1" up="" seg
@@ -300,7 +267,7 @@ up_prefix() {
   printf '%s' "$up"
 }
 
-# rewrite_links SRCDIR INSTALLED_DIR [KEEPROOT]
+# rewrite_links SRCDIR INSTALLED_DIR [KEEPROOT] [HARNESS]
 # Reads Markdown on stdin. Every relative link is resolved against SRCDIR (the
 # file's directory inside the catalog) and re-pointed at the installed layout,
 # computed relative to INSTALLED_DIR (the generated file's directory inside the
@@ -308,10 +275,10 @@ up_prefix() {
 # skill with its references/) are left untouched. URLs, anchors, and absolute
 # paths are never changed.
 rewrite_links() {
-  local srcdir="$1" installed_dir="$2" keeproot="${3:-}"
+  local srcdir="$1" installed_dir="$2" keeproot="${3:-}" harness="${4:-}"
   local up
   up="$(up_prefix "$installed_dir")"
-  awk -v srcdir="$srcdir" -v up="$up" -v shared="$SHARED_DIR" -v state="$STATE_DIR" -v keeproot="$keeproot" '
+  awk -v srcdir="$srcdir" -v up="$up" -v shared="$SHARED_DIR" -v state="$STATE_DIR" -v keeproot="$keeproot" -v harness="$harness" '
     function normalize(p,    n, parts, i, out, depth) {
       n = split(p, parts, "/"); out = ""; depth = 0
       for (i = 1; i <= n; i++) {
@@ -336,6 +303,44 @@ rewrite_links() {
       if (norm == "LICENSE") return up state "/LICENSE" frag
       if (norm ~ /^(rules|skills|hooks|templates)(\/|$)/) return up shared "/" norm frag
       return up norm frag
+    }
+    function rule_header(    globs, paths, n, i) {
+      print "---"
+      if (description != "") print "description: " description
+      globs = applies
+      gsub(/[[:space:]]*,[[:space:]]*/, ",", globs)
+      if (harness == "copilot") {
+        printf "applyTo: \047%s\047\n", applies
+      } else if (harness == "claude") {
+        if (applies != "**/*" && applies != "") {
+          print "paths:"
+          n = split(globs, paths, ",")
+          for (i = 1; i <= n; i++) printf "  - \047%s\047\n", paths[i]
+        }
+      } else if (applies == "**/*" || applies == "") {
+        print "alwaysApply: true"
+      } else {
+        gsub(/,/, ", ", globs)
+        print "globs: " globs
+        print "alwaysApply: false"
+      }
+      print "---"
+    }
+    harness != "" {
+      sub(/\r$/, "")
+      if (NR == 1) {
+        if ($0 == "---") { header = 1; next }
+        rule_header()
+      }
+      if (header) {
+        if ($0 == "---") { header = 0; rule_header() }
+        else if (index($0, "description: ") == 1) description = substr($0, 14)
+        else if (index($0, "appliesTo: ") == 1) {
+          applies = substr($0, 12)
+          if (applies ~ /^".*"$/ || applies ~ /^\047.*\047$/) applies = substr(applies, 2, length(applies) - 2)
+        }
+        next
+      }
     }
     {
       line = $0; out = ""
@@ -368,7 +373,8 @@ valid_path() {
 
 safe_parents() {
   local rel="$1" d
-  d="$(dirname "$rel")"
+  d="${rel%/*}"
+  [ "$d" != "$rel" ] || d="."
   while [ "$d" != "." ]; do
     if [ -L "$target/$d" ]; then
       warn "$rel has a symlinked parent ($d); left untouched"
@@ -378,28 +384,52 @@ safe_parents() {
       warn "$rel has a non-directory parent ($d); left untouched"
       return 1
     fi
-    d="$(dirname "$d")"
+    if [ "${d%/*}" = "$d" ]; then d="."; else d="${d%/*}"; fi
   done
 }
 
-checksum() { cksum | awk '{ print $1 ":" $2 }'; }
+checksum() {
+  local sum crc bytes
+  sum="$(cksum)" || die "could not compute a content fingerprint"
+  read -r crc bytes <<< "$sum"
+  REPLY="$crc:$bytes"
+}
 
 fingerprint() {
+  REPLY=""
   if [ -L "$1" ]; then
-    printf 'L:%s' "$(readlink "$1" | checksum)"
+    local link
+    # Preserve trailing newlines in the target while removing readlink's own newline.
+    link="$(readlink "$1" && printf '.')" || die "could not read symlink '$1'"
+    link="${link%.}"
+    checksum <<< "${link%$'\n'}"
+    REPLY="L:$REPLY"
   elif [ -f "$1" ]; then
     local mode="-"
     [ ! -x "$1" ] || mode="x"
-    printf 'F:%s:%s' "$(checksum < "$1")" "$mode"
+    checksum < "$1"
+    REPLY="F:$REPLY:$mode"
   elif [ -e "$1" ]; then
-    printf 'directory-or-special'
+    REPLY="directory-or-special"
   fi
 }
 
-previous_fingerprint() { awk -F '\t' -v p="$1" '$1 == p { print $2; exit }' "$previous_manifest"; }
-tracked_fingerprint() { awk -F '\t' -v p="$1" '$1 == p { fp = $2 } END { if (fp != "-") print fp }' "$manifest_tmp"; }
-owned_tree() { awk -F '\t' -v p="$1" '$1 == p || index($1, p "/") == 1 { found = 1; exit } END { exit !found }' "$previous_manifest"; }
-record() { printf '%s\t%s\n' "$1" "$2" >> "$manifest_tmp"; }
+lookup_fingerprint() {
+  # Literal keys keep Bash 3.2 lookups in-process without treating path globs as patterns.
+  local data="$1" needle=$'\n'"$2"$'\t'
+  REPLY=""
+  case "$data" in
+    *"$needle"*) data="${data#*"$needle"}"; REPLY="${data%%$'\n'*}" ;;
+  esac
+}
+
+previous_fingerprint() { lookup_fingerprint "$previous_data" "$1"; }
+tracked_fingerprint() { lookup_fingerprint "$tracked_data" "$1"; [ "$REPLY" != "-" ] || REPLY=""; }
+owned_tree() { case "$previous_data" in *$'\n'"$1"$'\t'* | *$'\n'"$1/"*) return 0 ;; esac; return 1; }
+record() {
+  printf '%s\t%s\n' "$1" "$2" >> "$manifest_tmp"
+  tracked_data=$'\n'"$1"$'\t'"$2$tracked_data"
+}
 seen() { printf '%s\n' "$1" >> "$seen_tmp"; }
 action() { printf '%s\t%s\n' "$1" "$2" >> "$actions_file"; }
 
@@ -408,9 +438,11 @@ can_replace() {
   valid_path "$rel" || die "unsafe installation path '$rel'"
   seen "$rel"
   if ! safe_parents "$rel"; then action preserved "$rel"; return 1; fi
-  current="$(fingerprint "$target/$rel")"
+  fingerprint "$target/$rel"
+  current="$REPLY"
   [ -n "$current" ] || return 0
-  old="$(previous_fingerprint "$rel")"
+  previous_fingerprint "$rel"
+  old="$REPLY"
   if [ -z "$old" ]; then
     warn "$rel is unmanaged or belongs to another catalog; left untouched"
     action skipped "$rel"
@@ -435,12 +467,15 @@ can_replace() {
 
 install_file() {
   local from="$1" rel="$2" desired
-  desired="$(fingerprint "$from")"
+  fingerprint "$from"
+  desired="$REPLY"
   if ! can_replace "$rel" "$desired"; then return 0; fi
   if [ "$dry_run" = 1 ]; then
     say "  + $rel"
   else
-    mkdir -p "$(dirname "$target/$rel")"
+    local parent="${rel%/*}"
+    [ "$parent" != "$rel" ] || parent="."
+    [ -d "$target/$parent" ] || mkdir -p "$target/$parent"
     if [ -L "$target/$rel" ]; then rm -f "$target/$rel"; fi
     mv -f "$from" "$target/$rel"
   fi
@@ -448,30 +483,33 @@ install_file() {
   action written "$rel"
 }
 
-# write_file RELPATH [EXECUTABLE] (content on stdin)
+# write_file RELPATH [EXECUTABLE] (content prepared in the reusable staging file)
 write_file() {
-  local staged
-  staged="$(mktemp "$tmp_root/file.XXXXXX")"
-  cat > "$staged"
-  if [ "${2:-0}" = 1 ]; then chmod 755 "$staged"; else chmod 644 "$staged"; fi
-  install_file "$staged" "$1"
+  if [ "${2:-0}" = 1 ]; then
+    [ -x "$tmp_root/staged" ] || chmod 755 "$tmp_root/staged"
+  elif [ -x "$tmp_root/staged" ]; then
+    chmod 644 "$tmp_root/staged"
+  fi
+  install_file "$tmp_root/staged" "$1"
 }
 
 copy_file() {
   local executable=0
   [ ! -x "$1" ] || executable=1
-  write_file "$2" "$executable" < "$1"
+  cp "$1" "$tmp_root/staged"
+  write_file "$2" "$executable"
 }
 
 install_link() {
   local rel="$1" link="$2" desired
-  desired="L:$(printf '%s\n' "$link" | checksum)"
+  checksum <<< "$link"
+  desired="L:$REPLY"
   if ! can_replace "$rel" "$desired"; then return 0; fi
   if [ "$dry_run" = 1 ]; then
     say "  + $rel -> $link (copy if symlinks are unavailable)"
   else
     if [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; then rm -f "$target/$rel"; fi
-    mkdir -p "$(dirname "$target/$rel")"
+    [ -d "$target/${rel%/*}" ] || mkdir -p "$target/${rel%/*}"
     ln -s "$link" "$target/$rel"
   fi
   record "$rel" "$desired"
@@ -487,7 +525,8 @@ install_catalog() {
   local item f dest listing
   for item in $CATALOG_ITEMS; do
     [ -e "$src/$item" ] || continue
-    listing="$(files_under "$src" "$item")"
+    files_under "$src" "$item"
+    listing="$REPLY"
     while IFS= read -r f; do
       case "$f" in docs/*) dest="$f" ;; *) dest="$SHARED_DIR/$f" ;; esac
       install_resource "$f" "$dest"
@@ -499,17 +538,19 @@ install_catalog() {
 }
 
 files_under() {
-  local listing
-  listing="$(mktemp "$tmp_root/list.XXXXXX")"
+  local listing="$tmp_root/listing"
   if ! (cd "$1" && find "$2" -type f ! -name .DS_Store -print | LC_ALL=C sort) > "$listing"; then
     die "could not enumerate '$1/$2'; no obsolete-file cleanup will be performed"
   fi
-  printf '%s' "$listing"
+  REPLY="$listing"
 }
 
 install_resource() {
   case "$1" in
-    *.md) rewrite_links "$(dirname "$1")" "$(dirname "$2")" "${3:-}" < "$src/$1" | write_file "$2" ;;
+    *.md)
+      rewrite_links "${1%/*}" "${2%/*}" "${3:-}" < "$src/$1" > "$tmp_root/staged"
+      write_file "$2"
+      ;;
     *) copy_file "$src/$1" "$2" ;;
   esac
 }
@@ -519,7 +560,8 @@ install_shared_skills() {
   if [ -f "$src/skills/README.md" ]; then install_resource "skills/README.md" "$SHARED_DIR/skills/README.md"; fi
   for d in "$src/skills"/*/; do
     [ -f "$d/SKILL.md" ] || continue
-    name="$(basename "$d")"
+    d="${d%/}"
+    name="${d##*/}"
     rel="$SHARED_DIR/skills/$name"
     if ! safe_parents "$rel/SKILL.md"; then action skipped "$rel"; continue; fi
     if [ -L "$target/$rel" ] || { [ -e "$target/$rel" ] && ! owned_tree "$rel"; }; then
@@ -527,11 +569,13 @@ install_shared_skills() {
       action skipped "$rel"
       continue
     fi
-    listing="$(files_under "$src" "skills/$name")"
+    files_under "$src" "skills/$name"
+    listing="$REPLY"
     while IFS= read -r f; do
       install_resource "$f" "$SHARED_DIR/$f" "skills/$name"
     done < "$listing"
-    if [ "$dry_run" = 0 ] && { [ -z "$(tracked_fingerprint "$rel/SKILL.md")" ] || [ ! -f "$target/$rel/SKILL.md" ] || [ -L "$target/$rel/SKILL.md" ]; }; then
+    tracked_fingerprint "$rel/SKILL.md"
+    if [ "$dry_run" = 0 ] && { [ -z "$REPLY" ] || [ ! -f "$target/$rel/SKILL.md" ] || [ -L "$target/$rel/SKILL.md" ]; }; then
       warn "$rel/SKILL.md is not an installed regular catalog file; no Claude alias will be created"
       continue
     fi
@@ -549,21 +593,23 @@ install_root_files() {
   {
     printf '<!-- %s; catalog: %s; local edits are preserved unless --force is used -->\n' "$MARKER" "$CATALOG_ID"
     rewrite_links "" "" < "$src/AGENTS.md"
-  } | write_file "AGENTS.md"
+  } > "$tmp_root/staged"
+  write_file "AGENTS.md"
   n_root=$((n_root + 1))
 
   if has_harness claude; then
     {
       printf '<!-- %s; catalog: %s -->\n' "$MARKER" "$CATALOG_ID"
       printf '@AGENTS.md\n'
-    } | write_file "CLAUDE.md"
+    } > "$tmp_root/staged"
+    write_file "CLAUDE.md"
     n_root=$((n_root + 1))
   fi
 }
 
 # install_rules HARNESS
 install_rules() {
-  local harness="$1" dest pack f name applies desc rel ext globs g canonical linkdir
+  local harness="$1" dest pack f name rel ext canonical linkdir
   case "$harness" in
     claude) dest=".claude/rules"; ext=".md" ;;
     copilot) dest=".github/instructions"; ext=".instructions.md" ;;
@@ -574,46 +620,22 @@ install_rules() {
   for pack in $packs; do
     for f in "$src/rules/$pack"/*.md; do
       [ -f "$f" ] || continue
-      name="$(basename "$f" .md)"
+      name="${f##*/}"
+      name="${name%.md}"
       canonical="$SHARED_DIR/rules/$pack/$name.md"
       linkdir="rules/$pack"
       if [ "$dry_run" = 0 ]; then
-        if [ -z "$(tracked_fingerprint "$canonical")" ] || ! safe_parents "$canonical" || [ -L "$target/$canonical" ] || [ ! -f "$target/$canonical" ]; then
+        tracked_fingerprint "$canonical"
+        if [ -z "$REPLY" ] || ! safe_parents "$canonical" || [ -L "$target/$canonical" ] || [ ! -f "$target/$canonical" ]; then
           warn "$canonical is not an installed regular catalog file; its native adapter was skipped"
           continue
         fi
         f="$target/$canonical"
         linkdir="$SHARED_DIR/rules/$pack"
       fi
-      applies="$(fm_value appliesTo "$f")"
-      desc="$(fm_raw description "$f")"
       rel="$dest/$pack-$name$ext"
-      globs="$(printf '%s' "$applies" | sed 's/[[:space:]]*,[[:space:]]*/,/g')"
-      {
-        printf -- '---\n'
-        [ -n "$desc" ] && printf 'description: %s\n' "$desc"
-        case "$harness" in
-          copilot)
-            printf "applyTo: '%s'\n" "$applies"
-            ;;
-          claude)
-            if [ "$applies" != "**/*" ] && [ -n "$applies" ]; then
-              printf 'paths:\n'
-              for g in $(printf '%s' "$globs" | tr ',' ' '); do printf "  - '%s'\n" "$g"; done
-            fi
-            ;;
-          cursor)
-            if [ "$applies" = "**/*" ] || [ -z "$applies" ]; then
-              printf 'alwaysApply: true\n'
-            else
-              printf 'globs: %s\n' "$(printf '%s' "$globs" | sed 's/,/, /g')"
-              printf 'alwaysApply: false\n'
-            fi
-            ;;
-        esac
-        printf -- '---\n'
-        body_of "$f" | rewrite_links "$linkdir" "$dest"
-      } | write_file "$rel"
+      rewrite_links "$linkdir" "$dest" "" "$harness" < "$f" > "$tmp_root/staged"
+      write_file "$rel"
       n_rules=$((n_rules + 1))
     done
   done
@@ -639,8 +661,7 @@ detect_symlinks() {
 }
 
 can_link_directory() {
-  local rel="$1" f p old current listing
-  listing="$(mktemp "$tmp_root/entries.XXXXXX")"
+  local rel="$1" f p old current listing="$tmp_root/entries"
   if ! find "$target/$rel" -mindepth 1 -print > "$listing"; then
     die "could not inspect '$rel'; its copied skill directory will not be replaced"
   fi
@@ -649,9 +670,11 @@ can_link_directory() {
     if [ -d "$f" ] && [ ! -L "$f" ]; then
       owned_tree "$p" || return 1
     else
-      old="$(previous_fingerprint "$p")"
+      previous_fingerprint "$p"
+      old="$REPLY"
       [ -n "$old" ] || return 1
-      current="$(fingerprint "$f")"
+      fingerprint "$f"
+      current="$REPLY"
       if [ "$current" != "$old" ] && [ "$force" = 0 ]; then return 1; fi
     fi
   done < "$listing"
@@ -693,8 +716,10 @@ install_skill_aliases() {
       install_link "$rel" "../../$SHARED_DIR/skills/$name"
     else
       if [ -L "$target/$rel" ] || { [ -e "$target/$rel" ] && [ ! -d "$target/$rel" ]; }; then
-        old="$(previous_fingerprint "$rel")"
-        current="$(fingerprint "$target/$rel")"
+        previous_fingerprint "$rel"
+        old="$REPLY"
+        fingerprint "$target/$rel"
+        current="$REPLY"
         if [ -z "$old" ] || { [ "$current" != "$old" ] && [ "$force" = 0 ]; }; then
           warn "$rel is unmanaged or locally modified; left untouched"
           seen "$rel"
@@ -705,10 +730,12 @@ install_skill_aliases() {
         if [ "$dry_run" = 0 ] && { [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; }; then continue; fi
       fi
       if [ "$dry_run" = 1 ]; then
-        listing="$(files_under "$src" "skills/$name")"
+        files_under "$src" "skills/$name"
+        listing="$REPLY"
         while IFS= read -r f; do install_resource "$f" "$rel/${f#"skills/$name/"}" "skills/$name"; done < "$listing"
       else
-        listing="$(files_under "$target/$SHARED_DIR/skills/$name" ".")"
+        files_under "$target/$SHARED_DIR/skills/$name" "."
+        listing="$REPLY"
         while IFS= read -r f; do
           f="${f#./}"
           copy_file "$target/$SHARED_DIR/skills/$name/$f" "$rel/$f"
@@ -767,13 +794,15 @@ EOF
 # Existing unmanaged JSON is never merged or adopted.
 install_hook_config() {
   local rel="$1"
-  if { [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; } && [ -z "$(previous_fingerprint "$rel")" ]; then
+  previous_fingerprint "$rel"
+  if { [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; } && [ -z "$REPLY" ]; then
     warn "$rel is unmanaged; merge this hook yourself:"$'\n'"$(hook_config_content "$rel")"
     seen "$rel"
     action skipped "$rel"
     return 0
   fi
-  hook_config_content "$rel" | write_file "$rel"
+  hook_config_content "$rel" > "$tmp_root/staged"
+  write_file "$rel"
   n_hooks=$((n_hooks + 1))
 }
 
@@ -824,7 +853,8 @@ install_git_hooks() {
   fi
   for hook in pre-commit pre-push; do
     rel=".git/hooks/$hook"
-    git_hook_content "$hook" | write_file "$rel" 1
+    git_hook_content "$hook" > "$tmp_root/staged"
+    write_file "$rel" 1
     n_hooks=$((n_hooks + 1))
   done
 }
@@ -837,6 +867,7 @@ manifest_path() { printf '%s/%s/%s' "$target" "$STATE_DIR" "$MANIFEST_NAME"; }
 
 load_catalog_state() {
   local mp rel fp extra input
+  local fingerprint_pattern='^(F:[0-9]+:[0-9]+:[x-]|L:[0-9]+:[0-9]+|legacy)$'
   mp="$(manifest_path)"
   safe_parents "$STATE_DIR/$MANIFEST_NAME" || die "the catalog manifest must have real directory parents"
   [ ! -L "$mp" ] || die "refusing to use a symlinked catalog manifest"
@@ -850,7 +881,7 @@ load_catalog_state() {
       case "$rel" in "" | \#*) continue ;; esac
       valid_path "$rel" || die "unsafe manifest path '$rel'"
       [ -z "$extra" ] || die "malformed manifest entry '$rel'"
-      if ! printf '%s\n' "$fp" | grep -Eq '^(F:[0-9]+:[0-9]+:[x-]|L:[0-9]+:[0-9]+|legacy)$'; then
+      if ! [[ "$fp" =~ $fingerprint_pattern ]]; then
         die "invalid fingerprint for '$rel'"
       fi
       printf '%s\t%s\n' "$rel" "$fp" >> "$previous_manifest"
@@ -873,7 +904,9 @@ load_catalog_state() {
   fi
   awk -F '\t' '!seen[$1]++' "$previous_manifest" > "$tmp_root/unique"
   mv "$tmp_root/unique" "$previous_manifest"
-  cat "$previous_manifest" > "$manifest_tmp"
+  previous_data=$'\n'"$(< "$previous_manifest")"$'\n'
+  tracked_data="$previous_data"
+  cp "$previous_manifest" "$manifest_tmp"
 }
 
 effective_manifest() {
@@ -883,10 +916,11 @@ effective_manifest() {
 prune_parents() {
   [ "$dry_run" = 0 ] || return 0
   local d
-  d="$(dirname "$1")"
+  d="${1%/*}"
+  [ "$d" != "$1" ] || d="."
   while [ "$d" != "." ] && [ -d "$target/$d" ] && [ ! -L "$target/$d" ]; do
     rmdir "$target/$d" 2>/dev/null || break
-    d="$(dirname "$d")"
+    if [ "${d%/*}" = "$d" ]; then d="."; else d="${d%/*}"; fi
   done
 }
 
@@ -908,7 +942,7 @@ write_manifest() {
       printf '# source: %s @ %s\n' "$src_label" "$src_rev"
       printf '# installer: %s\n' "$INSTALLER_VERSION"
       printf '# options: --harness %s --packs %s%s%s%s\n' \
-        "$(printf '%s' "$harnesses" | tr ' ' ',')" "$(printf '%s' "$packs" | tr ' ' ',')" \
+        "${harnesses// /,}" "${packs// /,}" \
         "$([ "$with_hooks" = 1 ] && printf ' --hooks')" \
         "$([ "$with_git_hooks" = 1 ] && printf ' --git-hooks')" \
         "$([ "$touch_root" = 0 ] && printf ' --no-root')"
@@ -924,7 +958,8 @@ remove_path() {
   valid_path "$rel" || die "unsafe removal path '$rel'"
   seen "$rel"
   if ! safe_parents "$rel"; then action preserved "$rel"; return 0; fi
-  current="$(fingerprint "$target/$rel")"
+  fingerprint "$target/$rel"
+  current="$REPLY"
   if [ -z "$current" ]; then
     record "$rel" "-"
     prune_parents "$rel"
@@ -947,20 +982,22 @@ remove_path() {
 
 remove_obsolete() {
   local rel old
+  awk -F '\t' 'FILENAME == ARGV[1] { seen[$0] = 1; next } !($1 in seen)' "$seen_tmp" "$previous_manifest" > "$tmp_root/obsolete"
   while IFS=$'\t' read -r rel old; do
-    if ! grep -Fqx -- "$rel" "$seen_tmp"; then remove_path "$rel" "$old"; fi
-  done < "$previous_manifest"
+    remove_path "$rel" "$old"
+  done < "$tmp_root/obsolete"
 }
 
 remove_obsolete_shared() {
   local rel old
+  awk -F '\t' 'FILENAME == ARGV[1] { seen[$0] = 1; next } !($1 in seen)' "$seen_tmp" "$previous_manifest" > "$tmp_root/obsolete"
   while IFS=$'\t' read -r rel old; do
     case "$rel" in
       docs/* | .agents/skills/* | .agents/rules/* | .agents/hooks/* | .agents/templates/*)
-        if ! grep -Fqx -- "$rel" "$seen_tmp"; then remove_path "$rel" "$old"; fi
+        remove_path "$rel" "$old"
         ;;
     esac
-  done < "$previous_manifest"
+  done < "$tmp_root/obsolete"
 }
 
 migrate_legacy() {
@@ -969,7 +1006,8 @@ migrate_legacy() {
   local rel
   while IFS= read -r rel; do
     case "$rel" in "" | \#*) continue ;; esac
-    remove_path "$rel" "$(previous_fingerprint "$rel")"
+    previous_fingerprint "$rel"
+    remove_path "$rel" "$REPLY"
   done < "$legacy_entries"
 }
 

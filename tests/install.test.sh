@@ -8,6 +8,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo="$(cd "$here/.." && pwd -P)"
 installer="$repo/install.sh"
+test_source="$repo"
 state=".agents/catalogs/dotnet-tanstack-mono-skills/.install-manifest"
 
 work="$(mktemp -d 2>/dev/null || mktemp -d -t harness-tests)"
@@ -33,7 +34,7 @@ assert_unowned() { assert_eq "$(saved_fingerprint "$1" "$2")" "" "unmanaged $2";
 install_to() {
   local label="$1"
   shift
-  if "$installer" "$@" > "$work/$label.log" 2>&1; then
+  if "$installer" --source "$test_source" "$@" > "$work/$label.log" 2>&1; then
     ok "$label exited zero"
   else
     cat "$work/$label.log" >&2
@@ -42,8 +43,8 @@ install_to() {
 }
 
 snapshot() {
-  find "$1" -type f -exec cksum {} \; | LC_ALL=C sort
-  find "$1" -type l -exec sh -c 'printf "%s -> %s\n" "$1" "$(readlink "$1")"' sh {} \; | LC_ALL=C sort
+  find "$1" -type f -exec cksum {} + | LC_ALL=C sort
+  find "$1" -type l -exec sh -c 'for link do printf "%s -> %s\n" "$link" "$(readlink "$link")"; done' sh {} + | LC_ALL=C sort
 }
 
 convert_crlf() {
@@ -53,25 +54,32 @@ convert_crlf() {
 
 # Every relative Markdown link in every .md/.mdc under DIR must resolve to an existing path.
 assert_links_resolve() {
-  local dir="$1" f dir_of t p links total=0 broken=0
-  while IFS= read -r f; do
-    dir_of="$(dirname "$f")"
-    links="$(grep -o '](\([^)]*\))' "$f" | sed 's/^](//; s/)$//')" || true
-    # Here-string rather than a nested process substitution: bash 3.2 (macOS) leaks fds there.
-    while IFS= read -r t; do
-      case "$t" in http://* | https://* | mailto:* | \#* | /* | "") continue ;; esac
-      p="${t%%#*}"
-      total=$((total + 1))
-      if [ ! -e "$dir_of/$p" ]; then
-        broken=$((broken + 1))
-        printf '       broken: %s -> %s\n' "${f#"$dir"/}" "$t" >&2
-      fi
-    done <<< "$links"
-  done < <(find -L "$dir" -path "$dir/.git" -prune -o \( -name '*.md' -o -name '*.mdc' \) -type f -print)
+  local dir="$1" f t p total=0 broken=0
+  if ! find -L "$dir" -path "$dir/.git" -prune -o \( -name '*.md' -o -name '*.mdc' \) -type f -exec awk '
+    {
+      line = $0
+      while (match(line, /\]\([^)]*\)/)) {
+        print FILENAME "\t" substr(line, RSTART + 2, RLENGTH - 3)
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' {} + > "$work/links"; then
+    ko "could not scan Markdown links under ${dir#"$work"/}"
+    return
+  fi
+  while IFS=$'\t' read -r f t; do
+    case "$t" in http://* | https://* | mailto:* | \#* | /* | "") continue ;; esac
+    p="${t%%#*}"
+    total=$((total + 1))
+    if [ ! -e "${f%/*}/$p" ]; then
+      broken=$((broken + 1))
+      printf '       broken: %s -> %s\n' "${f#"$dir"/}" "$t" >&2
+    fi
+  done < "$work/links"
   if [ "$broken" = 0 ] && [ "$total" -gt 0 ]; then ok "all $total relative links resolve under ${dir#"$work"/}"; else ko "$broken of $total links broken under ${dir#"$work"/}"; fi
 }
 
-section() { printf '\n== %s\n' "$1"; }
+section() { printf '\n== %s (elapsed %ss)\n' "$1" "$SECONDS"; }
 
 # ---------------------------------------------------------------------------
 section "shared layout, native adapters, hooks, and one physical skill source"
@@ -152,10 +160,66 @@ assert_file "$t1/.git/HEAD"
 
 section "safe upgrades, unchanged upstream updates, edited files, and stale paths"
 catalog="$work/catalog"; mkdir -p "$catalog"
-cp "$repo/AGENTS.md" "$repo/LICENSE" "$catalog/"
-for item in docs rules skills hooks templates; do cp -R "$repo/$item" "$catalog/$item"; done
+# Full-catalog installation is covered above and in piped mode. Behavioral cases
+# use a small catalog so their cost does not grow with the production catalog.
+mkdir -p "$catalog/docs" "$catalog/rules/csharp" "$catalog/rules/web" \
+  "$catalog/skills/add-module/references" "$catalog/skills/add-web-feature/references" "$catalog/hooks/scripts"
+test_source="$catalog"
+cp "$repo/LICENSE" "$catalog/LICENSE"
+cp "$repo/hooks/scripts/format-gate" "$repo/hooks/scripts/guard-generated-files" "$repo/hooks/scripts/verify-gate" "$catalog/hooks/scripts/"
+cat > "$catalog/AGENTS.md" <<'MD'
+# Test catalog
+
+[Architecture](docs/architecture.md), [rules](rules/README.md),
+[skills](skills/README.md), and [hooks](hooks/README.md).
+MD
+printf '# Architecture\n' > "$catalog/docs/architecture.md"
+printf '# Usage\n\n[Architecture](architecture.md).\n' > "$catalog/docs/usage.md"
+printf '# Rules\n\n[Async](csharp/async.md), [routes](web/routes.md).\n' > "$catalog/rules/README.md"
+printf '# Skills\n\n[Module](add-module/SKILL.md), [web](add-web-feature/SKILL.md).\n' > "$catalog/skills/README.md"
+printf '# Hooks\n' > "$catalog/hooks/README.md"
+cat > "$catalog/rules/csharp/async.md" <<'MD'
+---
+title: Async
+description: Async rule fixture
+appliesTo: 'apps/api/**/*.cs'
+---
+
+[Architecture](../../docs/architecture.md).
+MD
+cat > "$catalog/rules/web/routes.md" <<'MD'
+---
+title: Routes
+description: Route rule fixture
+appliesTo: 'apps/web/src/routes/**/*.ts, apps/web/src/routes/**/*.tsx'
+---
+
+[Architecture](../../docs/architecture.md).
+MD
+cat > "$catalog/skills/add-module/SKILL.md" <<'MD'
+---
+name: add-module
+description: Module skill fixture
+---
+
+[Architecture](../../docs/architecture.md), [rule](../../rules/csharp/async.md),
+[reference](references/example.md), and [web skill](../add-web-feature/SKILL.md).
+MD
+cat > "$catalog/skills/add-web-feature/SKILL.md" <<'MD'
+---
+name: add-web-feature
+description: Web skill fixture
+---
+
+[Architecture](../../docs/architecture.md), [rule](../../rules/web/routes.md),
+and [reference](references/example.md).
+MD
+printf '# Module example\n\n[Architecture](../../../docs/architecture.md).\n' > "$catalog/skills/add-module/references/example.md"
+printf '# Web example\n\n[Architecture](../../../docs/architecture.md).\n' > "$catalog/skills/add-web-feature/references/example.md"
 printf 'retired\n' > "$catalog/docs/retired.md"
 printf 'retired with local edits\n' > "$catalog/docs/edited-retired.md"
+printf 'literal-key document\n' > "$catalog/docs/lookup [one].md"
+printf 'neighbor document\n' > "$catalog/docs/lookup o.md"
 mkdir -p "$catalog/skills/retired-skill"
 printf -- '---\nname: retired-skill\ndescription: Test obsolete skill cleanup.\n---\n' > "$catalog/skills/retired-skill/SKILL.md"
 t2="$work/updates"; mkdir -p "$t2"
@@ -163,6 +227,7 @@ install_to initial --target "$t2" --source "$catalog" --hooks
 baseline="$(saved_fingerprint "$t2" ".agents/skills/add-module/SKILL.md")"
 printf '\nlocal skill edit\n' >> "$t2/.agents/skills/add-module/SKILL.md"
 printf '\nlocal architecture edit\n' >> "$t2/docs/architecture.md"
+printf '\nlocal literal-key edit\n' >> "$t2/docs/lookup [one].md"
 printf '\nlocal neutral rule edit\n' >> "$t2/.agents/rules/web/routes.md"
 printf '\nlocal rule edit\n' >> "$t2/.cursor/rules/web-routes.mdc"
 printf '\n ' >> "$t2/.claude/settings.json"
@@ -179,6 +244,8 @@ printf '\nupstream skill update\n' >> "$catalog/skills/add-web-feature/SKILL.md"
 printf '\nupstream conflicting update\n' >> "$catalog/skills/add-module/SKILL.md"
 printf '\nupstream docs update\n' >> "$catalog/docs/usage.md"
 printf '\nupstream architecture update\n' >> "$catalog/docs/architecture.md"
+printf '\nupstream literal-key update\n' >> "$catalog/docs/lookup [one].md"
+printf '\nupstream neighbor update\n' >> "$catalog/docs/lookup o.md"
 printf 'new upstream doc\n' > "$catalog/docs/new.md"
 rm "$catalog/docs/retired.md" "$catalog/docs/edited-retired.md" "$catalog/skills/retired-skill/SKILL.md"
 rmdir "$catalog/skills/retired-skill"
@@ -190,6 +257,9 @@ assert_grep "$t2/.agents/skills/add-module/SKILL.md" "local skill edit"
 assert_not_grep "$t2/.agents/skills/add-module/SKILL.md" "upstream conflicting update"
 assert_grep "$t2/docs/architecture.md" "local architecture edit"
 assert_not_grep "$t2/docs/architecture.md" "upstream architecture update"
+assert_grep "$t2/docs/lookup [one].md" "local literal-key edit"
+assert_not_grep "$t2/docs/lookup [one].md" "upstream literal-key update"
+assert_grep "$t2/docs/lookup o.md" "upstream neighbor update"
 assert_grep "$t2/.cursor/rules/web-routes.mdc" "local rule edit"
 assert_grep "$t2/.claude/rules/web-routes.md" "local neutral rule edit"
 assert_grep "$t2/.github/instructions/web-routes.instructions.md" "local neutral rule edit"
@@ -209,6 +279,8 @@ install_to hard --target "$t2" --source "$catalog" --hooks --hard
 assert_grep "$t2/.agents/skills/add-module/SKILL.md" "upstream conflicting update"
 assert_not_grep "$t2/.agents/skills/add-module/SKILL.md" "local skill edit"
 assert_grep "$t2/docs/architecture.md" "upstream architecture update"
+assert_grep "$t2/docs/lookup [one].md" "upstream literal-key update"
+assert_not_grep "$t2/docs/lookup [one].md" "local literal-key edit"
 assert_not_grep "$t2/.cursor/rules/web-routes.mdc" "local rule edit"
 assert_not_grep "$t2/.claude/rules/web-routes.md" "local neutral rule edit"
 assert_exec "$t2/.agents/hooks/scripts/format-gate"
@@ -312,7 +384,7 @@ assert_not_grep "$t4/.claude/skills/add-module/SKILL.md" "local fallback-only ed
 if [ "$links_available" = 1 ]; then assert_eq "$(readlink "$t4/.claude/skills/add-module")" "../../.agents/skills/add-module" "owned copies converted to symlinks"; fi
 assert_links_resolve "$t4"
 t5="$work/emulation"; mkdir -p "$t5"
-if PATH="$work/emulated-links:$PATH" "$installer" --target "$t5" --harness claude > "$work/emulation.log" 2>&1; then ok "emulated symlink fallback exited zero"; else cat "$work/emulation.log" >&2; ko "emulated symlink fallback failed"; fi
+if PATH="$work/emulated-links:$PATH" "$installer" --target "$t5" --source "$catalog" --harness claude > "$work/emulation.log" 2>&1; then ok "emulated symlink fallback exited zero"; else cat "$work/emulation.log" >&2; ko "emulated symlink fallback failed"; fi
 assert_grep "$work/emulation.log" "ln did not create a real symbolic link"
 assert_regular "$t5/.claude/skills/add-module/SKILL.md"
 printf 'foreign addition inside a copied skill\n' > "$t5/.claude/skills/add-module/foreign-note.txt"
@@ -334,14 +406,14 @@ fi
 
 section "scoped packs, --no-root, and safely removing obsolete adapters"
 t6="$work/subset"; mkdir -p "$t6"
-install_to subset --target "$t6" --harness claude --packs api
+install_to subset --target "$t6" --source "$repo" --harness claude --packs api
 assert_eq "$(find "$t6/.claude/rules" -type f | wc -l | tr -d ' ')" "20" "API role adapter count"
 assert_missing "$t6/.claude/rules/web-routes.md"
 assert_missing "$t6/.github"
 assert_missing "$t6/.cursor"
 assert_file "$t6/.agents/rules/web/routes.md"
 printf '\nlocal contract edit\n' >> "$t6/AGENTS.md"
-install_to no-root --target "$t6" --harness codex --packs reviewer --no-root --force
+install_to no-root --target "$t6" --source "$repo" --harness codex --packs reviewer --no-root --force
 assert_grep "$t6/AGENTS.md" "local contract edit"
 assert_missing "$t6/.claude/rules"
 assert_missing "$t6/.claude/skills"
@@ -366,7 +438,7 @@ printf 'foreign project docs\n' > "$t7/docs/foreign.md"
 } > "$t7/harness/.install-manifest"
 convert_crlf "$t7/harness/.install-manifest"
 snapshot "$t7" > "$work/legacy-before"
-if "$installer" --target "$t7" > "$work/legacy-refused.log" 2>&1; then ko "legacy migration without force accepted"; else assert_grep "$work/legacy-refused.log" "legacy installation has no fingerprints"; fi
+if "$installer" --target "$t7" --source "$catalog" > "$work/legacy-refused.log" 2>&1; then ko "legacy migration without force accepted"; else assert_grep "$work/legacy-refused.log" "legacy installation has no fingerprints"; fi
 snapshot "$t7" > "$work/legacy-after"
 assert_same "$work/legacy-before" "$work/legacy-after"
 install_to legacy --target "$t7" --force
@@ -408,7 +480,7 @@ case "\$last" in */docs/usage.md) printf 'simulated write failure\n' >&2; exit 7
 exec "$real_mv" "\$@"
 SH
 chmod +x "$work/failing-mv/mv"
-if PATH="$work/failing-mv:$PATH" "$installer" --target "$t9" --harness codex > "$work/interrupted.log" 2>&1; then ko "simulated write failure was ignored"; else assert_grep "$work/interrupted.log" "simulated write failure"; fi
+if PATH="$work/failing-mv:$PATH" "$installer" --target "$t9" --source "$catalog" --harness codex > "$work/interrupted.log" 2>&1; then ko "simulated write failure was ignored"; else assert_grep "$work/interrupted.log" "simulated write failure"; fi
 assert_file "$t9/docs/architecture.md"
 assert_file "$t9/$state"
 install_to retry --target "$t9" --harness codex
@@ -438,7 +510,7 @@ exec "$real_find" "\$@"
 SH
 chmod +x "$work/failing-find/find"
 snapshot "$t9/.agents/rules" > "$work/rules-before"
-if PATH="$work/failing-find:$PATH" "$installer" --target "$t9" --harness codex > "$work/enumeration.log" 2>&1; then ko "enumeration failure was ignored"; else assert_grep "$work/enumeration.log" "could not enumerate"; fi
+if PATH="$work/failing-find:$PATH" "$installer" --target "$t9" --source "$catalog" --harness codex > "$work/enumeration.log" 2>&1; then ko "enumeration failure was ignored"; else assert_grep "$work/enumeration.log" "could not enumerate"; fi
 snapshot "$t9/.agents/rules" > "$work/rules-after"
 assert_same "$work/rules-before" "$work/rules-after"
 install_to enumeration-retry --target "$t9" --harness codex
@@ -505,5 +577,5 @@ assert_missing "$t12/.cursor"
 assert_links_resolve "$t12"
 
 # ---------------------------------------------------------------------------
-printf '\n%d passed, %d failed\n' "$pass" "$fail"
+printf '\n%d passed, %d failed (%ss)\n' "$pass" "$fail" "$SECONDS"
 [ "$fail" = 0 ]

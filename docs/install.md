@@ -167,3 +167,11 @@ Harness formats change quickly; re-verify before relying on anything marked Prev
 **Generic `AGENTS.md`-reading harness.** `install.sh --harness codex` installs the shared catalog, root contract, and documentation without native rule adapters. Add `--no-root` when maintaining your own root contract, and link it to the installed architecture, rules, and skills.
 
 Discovery references: [Agent Skills integration](https://agentskills.io/client-implementation/adding-skills-support), [Claude Code](https://code.claude.com/docs/en/skills), [VS Code](https://code.visualstudio.com/docs/agent-customization/agent-skills), [Codex](https://developers.openai.com/codex/skills), [Cursor](https://cursor.com/docs/skills).
+
+## Testing the installer
+
+From the catalog checkout, run `bash tests/install.test.sh` (or `/bin/bash tests/install.test.sh` to explicitly exercise macOS Bash 3.2). The suite prints elapsed seconds at each section and the total duration.
+
+Full-catalog scenarios cover the installed layout, all skills and native rule adapters, idempotency, scoped packs, link integrity, and piped installation. A small representative catalog covers updates, conflicts, migrations, copy fallback, and failure recovery without repeatedly installing unrelated catalog content. Snapshot checksums and Markdown link extraction are batched, and manifest lookups use literal in-process keys instead of launching a utility per path. No platform skips or additional runtime dependencies are needed.
+
+CI runs the same suite on Ubuntu, macOS, and Windows Git Bash. The checkout action uses its Node 24 runtime; the shell-only suite does not require a separate Node setup step.
