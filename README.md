@@ -14,7 +14,7 @@ Rules, skills, and hooks that equip any coding agent (Copilot, Claude Code, Code
 | [hooks/](hooks/README.md)                                          | Deterministic guards (generated-file edits, contract drift, format, verify)                | On harness/git events       | Ready  |
 | [docs/usage.md](docs/usage.md), [docs/install.md](docs/install.md) | How to drive the framework; what `install.sh` generates per harness                        | Human reference             | Ready  |
 | [templates/](templates/README.md)                                  | ADR, glossary, and feature-spec seeds for a consuming repository                           | Copied out                  | Ready  |
-| [install.sh](install.sh)                                           | One-command installer: vendors the catalog and generates every harness-specific copy       | Run per consuming repo      | Ready  |
+| [install.sh](install.sh)                                           | One-command installer: shared skills, native adapters, ownership-aware updates             | Run per consuming repo      | Ready  |
 
 ## Installation
 
@@ -30,7 +30,7 @@ git clone https://github.com/serhiiholushkov/dotnet-tanstack-mono-skills.git
 ./dotnet-tanstack-mono-skills/install.sh --target /path/to/your-repo
 ```
 
-Then review and commit the generated files. Re-run the same command to upgrade; `--uninstall` removes exactly what was installed.
+Then review and commit the installed files, symlinks, and catalog-specific ownership manifest. Re-run the same command to safely upgrade unchanged files; local edits are preserved with warnings. `--force` (alias `--hard`) replaces edited catalog-owned files, never files from other catalogs.
 
 Common variations:
 
@@ -39,21 +39,25 @@ Common variations:
 ./install.sh --target . --packs api                     # API-only role: common+csharp+dotnet-api+testing
 ./install.sh --target . --hooks --git-hooks             # also wire edit guards and pre-commit/pre-push
 ./install.sh --target . --dry-run                       # show the plan, write nothing
-./install.sh --target . --uninstall                     # remove everything from the last run
+./install.sh --target . --hard                          # replace edited files owned by this catalog
+./install.sh --target . --uninstall                     # remove unchanged owned files; preserve edits
+./install.sh --target . --uninstall --force             # also remove edited owned files
 ```
 
 What it does, in one pass:
 
-1. Vendors the canonical catalog into `<target>/harness/` (`AGENTS.md`, `docs/`, `rules/`, `skills/`, `hooks/`, `templates/`). This stays the single source of truth inside your repo.
-2. Writes the always-on contract at the root: `AGENTS.md` (Copilot, Codex, Cursor read it natively) and `CLAUDE.md` (`@AGENTS.md`). Existing, hand-written root files are never overwritten without `--force`.
-3. Generates each harness's native copies — rules with translated frontmatter (`applyTo` / `paths` / `globs`) and skills — and rewrites every relative link so it points back into `harness/`.
-4. Records every path in `harness/.install-manifest`, so re-runs replace stale files and `--uninstall` is exact.
+1. Installs skills once in `<target>/.agents/skills/`, with neutral rules, hook scripts, and templates alongside them under `.agents/`. Project documentation goes in the root `docs/` directory, not an extra `harness/` tree.
+2. Writes root `AGENTS.md` and, for Claude, `CLAUDE.md` importing `@AGENTS.md`. Existing unmanaged files are left untouched, even with `--force`.
+3. Uses the shared skill location directly for Copilot, Codex, and Cursor. Claude receives relative per-skill symlinks, with an automatic copy fallback when real symlinks are unavailable. Native rule adapters still translate `applyTo` / `paths` / `globs`, and Markdown links are rewritten for the installed layout.
+4. Records exact owned paths and content/link fingerprints in `.agents/catalogs/dotnet-tanstack-mono-skills/.install-manifest`. Updates and uninstall preserve local edits and unrelated files; force affects only previously owned paths.
 
-Requirements: bash 3.2+, `awk`, `sed`, `find`; `git` only when the catalog is fetched. Full option reference: `./install.sh --help`; what lands where, per harness: [docs/install.md](docs/install.md).
+Edit shared skills and project docs directly; their local changes survive normal reinstalls. Old copy-based installations require explicit `--force` migration because their manifests have no fingerprints. For an old custom catalog directory, also supply its original `--dir`.
+
+Requirements: bash 3.2+ and standard Unix tools; `git` only when fetching the catalog. Full option reference: `./install.sh --help`; layout, update protection, and migration: [docs/install.md](docs/install.md).
 
 ## What this framework deliberately excludes
 
-Runtime software is out of scope for a template: memory vaults, continuous-learning loops, eval pipelines, security scanners, and plugin manifests. ECC-style add-ons of that kind can coexist with this catalog — they consume the same `AGENTS.md` contract and rules — but they are products, not template content. The only executable here is `install.sh`, a dependency-free generator that copies and translates the catalog; it runs at install time, never alongside the agent.
+Runtime software is out of scope for a template: memory vaults, continuous-learning loops, eval pipelines, security scanners, and plugin manifests. ECC-style add-ons of that kind can coexist with this catalog — they consume the same `AGENTS.md` contract and rules — but they are products, not template content. The installer is dependency-free, copies and translates the catalog, and runs at install time, never alongside the agent.
 
 ## Layout
 
