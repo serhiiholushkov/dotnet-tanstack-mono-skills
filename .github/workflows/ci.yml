@@ -21,7 +21,7 @@ jobs:
         # On Windows this is Git Bash (MSYS2) — the shell Windows users run install.sh in.
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # macOS ships bash 3.2; running the suite with /bin/bash keeps the installer
       # honest about the oldest shell it claims to support.
       - name: Run installer tests

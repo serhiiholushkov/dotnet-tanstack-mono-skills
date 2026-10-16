@@ -30,14 +30,14 @@ Verify against each harness's current documentation before wiring; hook runtimes
 
 ## Wiring snippets
 
-`install.sh --hooks` writes the three harness configs below when they do not exist yet, and `--git-hooks` installs the git pre-commit / pre-push pair; both print the snippet instead of touching a file you already own. The snippets are kept here for manual wiring and for merging into existing configs.
+`install.sh` installs the shared scripts under `.agents/hooks/scripts/`. `--hooks` writes the three native configs below, and `--git-hooks` installs the git pre-commit / pre-push pair. Unchanged owned configs update on reinstall; edited configs are preserved unless forced, and unmanaged configs are never replaced or merged. The snippets are kept here for manual wiring and merging.
 
 **git pre-commit** (any harness, `.git/hooks/pre-commit` or a hook manager):
 
 ```sh
 #!/bin/sh
-harness/hooks/scripts/guard-generated-files --staged || exit 1
-harness/hooks/scripts/format-gate || exit 1
+.agents/hooks/scripts/guard-generated-files --staged || exit 1
+.agents/hooks/scripts/format-gate || exit 1
 ```
 
 **Claude Code** (`.claude/settings.json`) — block agent edits to generated files:
@@ -51,7 +51,7 @@ harness/hooks/scripts/format-gate || exit 1
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/harness/hooks/scripts/guard-generated-files --stdin-json"
+            "command": "${CLAUDE_PROJECT_DIR}/.agents/hooks/scripts/guard-generated-files --stdin-json"
           }
         ]
       }
@@ -68,7 +68,7 @@ harness/hooks/scripts/format-gate || exit 1
     "PreToolUse": [
       {
         "type": "command",
-        "command": "harness/hooks/scripts/guard-generated-files --stdin-json"
+        "command": ".agents/hooks/scripts/guard-generated-files --stdin-json"
       }
     ]
   }
@@ -82,10 +82,10 @@ harness/hooks/scripts/format-gate || exit 1
   "version": 1,
   "hooks": {
     "preToolUse": [
-      { "command": "harness/hooks/scripts/guard-generated-files --stdin-json" }
+      { "command": ".agents/hooks/scripts/guard-generated-files --stdin-json" }
     ]
   }
 }
 ```
 
-Paths assume the catalog lives at `harness/` in the consuming repository (the installer's default `--dir`); adjust when it is copied elsewhere. `verify-gate` on pre-push or session-end is a cost/latency trade-off each team makes — CI runs it regardless.
+Paths assume the installer's shared `.agents/` layout in the consuming repository. `verify-gate` on pre-push or session-end is a cost/latency trade-off each team makes — CI runs it regardless.

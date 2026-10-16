@@ -41,14 +41,16 @@ Role combinations:
 
 ## Installation
 
-The catalog here is canonical; installed copies are disposable and regenerated, never edited in place. `install.sh` installs the selected packs (`--packs all | api | web | reviewer | <list>`) and translates `appliesTo` per harness:
+`install.sh` installs the neutral rule catalog once under `.agents/rules/` and generates native adapters for the selected packs (`--packs all | api | web | reviewer | <list>`), translating `appliesTo` per harness:
 
 - **GitHub Copilot** — `.github/instructions/<pack>-<name>.instructions.md` with `applyTo`.
 - **Claude Code** — `.claude/rules/<pack>-<name>.md` with a `paths` list (omitted for `**/*` rules, which then load unconditionally).
-- **Codex and other AGENTS.md readers** — no scoped-rule mechanism; the packs stay in the vendored catalog and are reached through the root `AGENTS.md` links.
+- **Codex and other AGENTS.md readers** — no scoped-rule mechanism; the packs stay in `.agents/rules/` and are reached through root `AGENTS.md` links.
 - **Cursor** — `.cursor/rules/<pack>-<name>.mdc` with `globs` + `alwaysApply`.
 
 Details and the manual equivalent live in [../docs/install.md](../docs/install.md).
+
+Prefer editing the neutral rules. Native adapters regenerate from the effective shared rules during reinstall; both shared rule edits and direct adapter edits are preserved with warnings unless `--force` / `--hard` is supplied. Unmanaged rules from other catalogs are never overwritten.
 
 ## Index
 

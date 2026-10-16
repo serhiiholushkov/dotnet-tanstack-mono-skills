@@ -39,11 +39,13 @@ A full vertical runs top to bottom: plan → (module) → slice → migration �
 
 ## Installation
 
-The catalog here is canonical; installed copies are regenerated, never edited. `install.sh` copies every skill folder (including `references/`) and rewrites links that leave the folder so they point back into the vendored catalog:
+`install.sh` installs each skill folder (including `references/`) once under `.agents/skills/`, and rewrites external Markdown links for the shared layout and root-level `docs/`:
 
-- **GitHub Copilot** — `.github/skills/<name>/`.
-- **Claude Code** — `.claude/skills/<name>/`.
+- **GitHub Copilot** — reads `.agents/skills/<name>/` directly.
+- **Claude Code** — `.claude/skills/<name>` symlinks to `../../.agents/skills/<name>`, with an automatic copy fallback when symlinks are unavailable.
 - **Codex** — `.agents/skills/<name>/` (repo-shared; user-level `~/.agents/skills/` is not managed by the installer).
-- **Cursor** — `.cursor/skills/<name>/`.
+- **Cursor** — reads `.agents/skills/<name>/` directly.
+
+Edit the shared skill files in the consuming repository. Normal reinstalls preserve local edits; `--force` / `--hard` replaces only edited paths already owned by this catalog. Unmanaged skills, including same-name skills installed from another repository, are never overwritten. Fallback Claude copies refresh on reinstall rather than immediately.
 
 Details live in [../docs/install.md](../docs/install.md).
