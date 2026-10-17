@@ -25,5 +25,6 @@ jobs:
       # macOS ships bash 3.2; running the suite with /bin/bash keeps the installer
       # honest about the oldest shell it claims to support.
       - name: Run installer tests
+        timeout-minutes: 10
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then /bin/bash tests/install.test.sh; else bash tests/install.test.sh; fi

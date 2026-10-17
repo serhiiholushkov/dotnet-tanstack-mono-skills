@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # tests/install.test.sh — end-to-end tests for install.sh.
 # Runs the installer against throwaway targets and asserts the generated layout,
-# shared skills, symlink fallback, link integrity, ownership-aware updates,
-# migration, and uninstall. Dependency-free: bash, git, standard Unix tools.
+# shared resources, reference adapters, symlink fallback, link integrity,
+# project-owned contracts, updates, migration, and uninstall in under a minute.
+# Dependency-free: bash, git, standard Unix tools.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -30,6 +31,14 @@ assert_same() { if cmp -s "$1" "$2"; then ok "identical: ${1#"$work"/}"; else ko
 assert_regular() { if [ -f "$1" ] && [ ! -L "$1" ]; then ok "regular file: ${1#"$work"/}"; else ko "not a regular file: ${1#"$work"/}"; fi; }
 saved_fingerprint() { awk -F '\t' -v p="$2" '$1 == p { print $2; exit }' "$1/$state"; }
 assert_unowned() { assert_eq "$(saved_fingerprint "$1" "$2")" "" "unmanaged $2"; }
+
+own_existing_file() {
+  local crc bytes
+  read -r crc bytes < <(cksum < "$1/$2")
+  awk -F '\t' -v p="$2" '$1 != p' "$1/$state" > "$work/manifest-stage"
+  printf '%s\tF:%s:%s:-\n' "$2" "$crc" "$bytes" >> "$work/manifest-stage"
+  mv "$work/manifest-stage" "$1/$state"
+}
 
 install_to() {
   local label="$1"
@@ -82,19 +91,28 @@ assert_links_resolve() {
 section() { printf '\n== %s (elapsed %ss)\n' "$1" "$SECONDS"; }
 
 # ---------------------------------------------------------------------------
-section "shared layout, native adapters, hooks, and one physical skill source"
+section "shared layout, reference adapters, hooks, and one physical source"
+assert_links_resolve "$repo/docs"
 links_available=0
 if ln -s "$repo/README.md" "$work/capability-link" 2>/dev/null && [ -L "$work/capability-link" ]; then links_available=1; fi
 rm -f "$work/capability-link"
 t1="$work/repo with spaces"; mkdir -p "$t1"; git -C "$t1" init -q
 install_to full --target "$t1" --hooks --git-hooks
-assert_grep "$t1/AGENTS.md" "](docs/architecture.md)"
-assert_grep "$t1/AGENTS.md" "](.agents/rules/README.md)"
-assert_grep "$t1/CLAUDE.md" "^@AGENTS.md"
+assert_missing "$t1/AGENTS.md"
+assert_missing "$t1/CLAUDE.md"
+assert_unowned "$t1" "AGENTS.md"
+assert_unowned "$t1" "CLAUDE.md"
 assert_regular "$t1/docs/architecture.md"
+assert_eq "$(find "$t1/docs" -type f | wc -l | tr -d ' ')" "1" "installed documentation count"
+assert_missing "$t1/docs/catalog"
+assert_missing "$t1/docs/install.md"
+assert_missing "$t1/docs/usage.md"
+assert_missing "$t1/.agents/docs"
 assert_regular "$t1/.agents/skills/add-module/SKILL.md"
 assert_file "$t1/.agents/templates/adr.template.md"
+assert_eq "$(find "$t1" -name adr.template.md -type f | wc -l | tr -d ' ')" "1" "physical ADR template count"
 assert_exec "$t1/.agents/hooks/scripts/guard-generated-files"
+assert_eq "$(find "$t1" -name guard-generated-files -type f | wc -l | tr -d ' ')" "1" "physical guard script count"
 assert_file "$t1/.agents/catalogs/dotnet-tanstack-mono-skills/LICENSE"
 assert_grep "$t1/$state" "^# catalog: dotnet-tanstack-mono-skills$"
 assert_grep "$t1/$state" "^# format: 2$"
@@ -122,6 +140,10 @@ assert_grep "$t1/.claude/rules/csharp-async.md" "^paths:"
 assert_grep "$t1/.claude/rules/csharp-async.md" "  - 'apps/api/\*\*/\*.cs'"
 assert_not_grep "$t1/.claude/rules/csharp-async.md" "appliesTo"
 assert_not_grep "$t1/.claude/rules/common-naming.md" "^paths:"
+assert_grep "$t1/.claude/rules/common-boundaries.md" "](../../.agents/rules/common/boundaries.md)"
+assert_grep "$t1/.github/instructions/common-boundaries.instructions.md" "](../../.agents/rules/common/boundaries.md)"
+assert_grep "$t1/.cursor/rules/common-boundaries.mdc" "](../../.agents/rules/common/boundaries.md)"
+assert_eq "$(grep -rl '^# Boundaries$' "$t1/.agents/rules" "$t1/.claude/rules" "$t1/.github/instructions" "$t1/.cursor/rules" | wc -l | tr -d ' ')" "1" "physical boundaries rule body count"
 assert_grep "$t1/.claude/rules/testing-discipline.md" "  - 'apps/web/\*\*/\*.test.tsx'"
 assert_grep "$t1/.github/instructions/web-routes.instructions.md" "^applyTo: 'apps/web/src/routes/\*\*/\*.ts, apps/web/src/routes/\*\*/\*.tsx'$"
 assert_not_grep "$t1/.github/instructions/web-routes.instructions.md" "^title:"
@@ -136,9 +158,14 @@ assert_exec "$t1/.git/hooks/pre-commit"
 assert_exec "$t1/.git/hooks/pre-push"
 assert_grep "$t1/.git/hooks/pre-commit" '.agents/hooks/scripts/guard-generated-files" --staged'
 assert_grep "$t1/.git/hooks/pre-push" '.agents/hooks/scripts/verify-gate"'
+assert_grep "$t1/.agents/skills/scaffold-workspace/SKILL.md" "9. \*\*Project agent contracts\*\*"
+assert_grep "$t1/.agents/skills/scaffold-workspace/SKILL.md" "](../../../docs/architecture.md)"
+assert_grep "$work/full.log" "scaffold-workspace; its final step creates"
 assert_links_resolve "$t1"
 
-section "idempotent reinstall and complete owned uninstall"
+section "idempotent reinstall and uninstall preserve scaffolded contracts"
+printf '# Application instructions\n' > "$t1/AGENTS.md"
+printf '@AGENTS.md\n' > "$t1/CLAUDE.md"
 snapshot "$t1" > "$work/before"
 install_to identical --target "$t1" --hooks --git-hooks
 snapshot "$t1" > "$work/after"
@@ -147,8 +174,8 @@ assert_grep "$work/identical.log" "safely updating owned files"
 printf 'keep me\n' > "$t1/README.md"
 install_to uninstall --target "$t1" --uninstall
 assert_file "$t1/README.md"
-assert_missing "$t1/AGENTS.md"
-assert_missing "$t1/CLAUDE.md"
+assert_eq "$(cat "$t1/AGENTS.md")" "# Application instructions" "project contract survives uninstall"
+assert_eq "$(cat "$t1/CLAUDE.md")" "@AGENTS.md" "Claude project contract survives uninstall"
 assert_missing "$t1/docs"
 assert_missing "$t1/.claude"
 assert_missing "$t1/.github"
@@ -162,19 +189,16 @@ section "safe upgrades, unchanged upstream updates, edited files, and stale path
 catalog="$work/catalog"; mkdir -p "$catalog"
 # Full-catalog installation is covered above and in piped mode. Behavioral cases
 # use a small catalog so their cost does not grow with the production catalog.
-mkdir -p "$catalog/docs" "$catalog/rules/csharp" "$catalog/rules/web" \
+mkdir -p "$catalog/docs/catalog" "$catalog/rules/csharp" "$catalog/rules/web" \
   "$catalog/skills/add-module/references" "$catalog/skills/add-web-feature/references" "$catalog/hooks/scripts"
 test_source="$catalog"
 cp "$repo/LICENSE" "$catalog/LICENSE"
 cp "$repo/hooks/scripts/format-gate" "$repo/hooks/scripts/guard-generated-files" "$repo/hooks/scripts/verify-gate" "$catalog/hooks/scripts/"
-cat > "$catalog/AGENTS.md" <<'MD'
-# Test catalog
-
-[Architecture](docs/architecture.md), [rules](rules/README.md),
-[skills](skills/README.md), and [hooks](hooks/README.md).
-MD
 printf '# Architecture\n' > "$catalog/docs/architecture.md"
-printf '# Usage\n\n[Architecture](architecture.md).\n' > "$catalog/docs/usage.md"
+printf '# Operations\n\n[Architecture](architecture.md).\n' > "$catalog/docs/operations.md"
+printf 'repository-only installation guide\n' > "$catalog/docs/catalog/install.md"
+printf 'repository-only usage guide\n' > "$catalog/docs/catalog/usage.md"
+printf 'future repository-only guide\n' > "$catalog/docs/catalog/another-guide.md"
 printf '# Rules\n\n[Async](csharp/async.md), [routes](web/routes.md).\n' > "$catalog/rules/README.md"
 printf '# Skills\n\n[Module](add-module/SKILL.md), [web](add-web-feature/SKILL.md).\n' > "$catalog/skills/README.md"
 printf '# Hooks\n' > "$catalog/hooks/README.md"
@@ -186,6 +210,8 @@ appliesTo: 'apps/api/**/*.cs'
 ---
 
 [Architecture](../../docs/architecture.md).
+
+CANONICAL_ASYNC_RULE_BODY
 MD
 cat > "$catalog/rules/web/routes.md" <<'MD'
 ---
@@ -195,6 +221,8 @@ appliesTo: 'apps/web/src/routes/**/*.ts, apps/web/src/routes/**/*.tsx'
 ---
 
 [Architecture](../../docs/architecture.md).
+
+CANONICAL_WEB_RULE_BODY
 MD
 cat > "$catalog/skills/add-module/SKILL.md" <<'MD'
 ---
@@ -223,7 +251,20 @@ printf 'neighbor document\n' > "$catalog/docs/lookup o.md"
 mkdir -p "$catalog/skills/retired-skill"
 printf -- '---\nname: retired-skill\ndescription: Test obsolete skill cleanup.\n---\n' > "$catalog/skills/retired-skill/SKILL.md"
 t2="$work/updates"; mkdir -p "$t2"
-install_to initial --target "$t2" --source "$catalog" --hooks
+if (cd "$t2" && "$installer" --source "$catalog" --hooks) > "$work/initial.log" 2>&1; then ok "default target uses the execution directory without source root contracts"; else cat "$work/initial.log" >&2; ko "default-target install failed"; fi
+assert_missing "$t2/docs/catalog"
+assert_missing "$t2/AGENTS.md"
+assert_missing "$t2/CLAUDE.md"
+# Simulate a version 2 manifest that still owns root contracts, guides, and full rule adapters.
+printf 'project contract from an older installation\n' > "$t2/AGENTS.md"
+printf '@AGENTS.md\n' > "$t2/CLAUDE.md"
+printf 'old installation guide\n' > "$t2/docs/install.md"
+printf 'old usage guide\n' > "$t2/docs/usage.md"
+for rel in AGENTS.md CLAUDE.md docs/install.md docs/usage.md; do own_existing_file "$t2" "$rel"; done
+for rel in .claude/rules/web-routes.md .github/instructions/web-routes.instructions.md .cursor/rules/web-routes.mdc; do
+  cp "$t2/.agents/rules/web/routes.md" "$t2/$rel"
+  own_existing_file "$t2" "$rel"
+done
 baseline="$(saved_fingerprint "$t2" ".agents/skills/add-module/SKILL.md")"
 printf '\nlocal skill edit\n' >> "$t2/.agents/skills/add-module/SKILL.md"
 printf '\nlocal architecture edit\n' >> "$t2/docs/architecture.md"
@@ -242,7 +283,7 @@ printf 'foreign docs\n' > "$t2/docs/third-party.md"
 printf 'untracked addition\n' > "$t2/.agents/skills/retired-skill/notes.txt"
 printf '\nupstream skill update\n' >> "$catalog/skills/add-web-feature/SKILL.md"
 printf '\nupstream conflicting update\n' >> "$catalog/skills/add-module/SKILL.md"
-printf '\nupstream docs update\n' >> "$catalog/docs/usage.md"
+printf '\nupstream docs update\n' >> "$catalog/docs/operations.md"
 printf '\nupstream architecture update\n' >> "$catalog/docs/architecture.md"
 printf '\nupstream literal-key update\n' >> "$catalog/docs/lookup [one].md"
 printf '\nupstream neighbor update\n' >> "$catalog/docs/lookup o.md"
@@ -251,7 +292,14 @@ rm "$catalog/docs/retired.md" "$catalog/docs/edited-retired.md" "$catalog/skills
 rmdir "$catalog/skills/retired-skill"
 install_to update --target "$t2" --source "$catalog" --hooks
 assert_grep "$t2/.agents/skills/add-web-feature/SKILL.md" "upstream skill update"
-assert_grep "$t2/docs/usage.md" "upstream docs update"
+assert_grep "$t2/docs/operations.md" "upstream docs update"
+assert_missing "$t2/docs/install.md"
+assert_missing "$t2/docs/usage.md"
+assert_eq "$(cat "$t2/AGENTS.md")" "project contract from an older installation" "version 2 root contract preserved"
+assert_eq "$(cat "$t2/CLAUDE.md")" "@AGENTS.md" "version 2 Claude contract preserved"
+assert_unowned "$t2" "AGENTS.md"
+assert_unowned "$t2" "CLAUDE.md"
+assert_grep "$work/update.log" "released from installer ownership"
 assert_file "$t2/docs/new.md"
 assert_grep "$t2/.agents/skills/add-module/SKILL.md" "local skill edit"
 assert_not_grep "$t2/.agents/skills/add-module/SKILL.md" "upstream conflicting update"
@@ -261,8 +309,11 @@ assert_grep "$t2/docs/lookup [one].md" "local literal-key edit"
 assert_not_grep "$t2/docs/lookup [one].md" "upstream literal-key update"
 assert_grep "$t2/docs/lookup o.md" "upstream neighbor update"
 assert_grep "$t2/.cursor/rules/web-routes.mdc" "local rule edit"
-assert_grep "$t2/.claude/rules/web-routes.md" "local neutral rule edit"
-assert_grep "$t2/.github/instructions/web-routes.instructions.md" "local neutral rule edit"
+assert_grep "$t2/.agents/rules/web/routes.md" "local neutral rule edit"
+assert_grep "$t2/.claude/rules/web-routes.md" "](../../.agents/rules/web/routes.md)"
+assert_grep "$t2/.github/instructions/web-routes.instructions.md" "](../../.agents/rules/web/routes.md)"
+assert_not_grep "$t2/.claude/rules/web-routes.md" "CANONICAL_WEB_RULE_BODY"
+assert_not_grep "$t2/.github/instructions/web-routes.instructions.md" "CANONICAL_WEB_RULE_BODY"
 assert_grep "$work/update.log" "locally modified"
 assert_eq "$(saved_fingerprint "$t2" ".agents/skills/add-module/SKILL.md")" "$baseline" "original fingerprint retained for edited skill"
 if [ -x "$t2/.agents/hooks/scripts/format-gate" ]; then actual_mode="x"; else actual_mode="-"; fi
@@ -283,6 +334,7 @@ assert_grep "$t2/docs/lookup [one].md" "upstream literal-key update"
 assert_not_grep "$t2/docs/lookup [one].md" "local literal-key edit"
 assert_not_grep "$t2/.cursor/rules/web-routes.mdc" "local rule edit"
 assert_not_grep "$t2/.claude/rules/web-routes.md" "local neutral rule edit"
+assert_eq "$(grep -rl '^CANONICAL_WEB_RULE_BODY$' "$t2/.agents/rules" "$t2/.claude/rules" "$t2/.github/instructions" "$t2/.cursor/rules" | wc -l | tr -d ' ')" "1" "one shared rule body after forced upgrade"
 assert_exec "$t2/.agents/hooks/scripts/format-gate"
 assert_not_grep "$t2/.agents/hooks/scripts/format-gate" "local hook edit"
 assert_missing "$t2/docs/edited-retired.md"
@@ -294,11 +346,17 @@ assert_links_resolve "$t2"
 
 section "uninstall preserves edits and other catalogs; --force finishes only owned removal"
 printf '\nkeep modified doc\n' >> "$t2/docs/architecture.md"
+own_existing_file "$t2" "AGENTS.md"
+own_existing_file "$t2" "CLAUDE.md"
 install_to safe-uninstall --target "$t2" --uninstall
 assert_grep "$t2/docs/architecture.md" "keep modified doc"
 assert_file "$t2/$state"
 assert_file "$t2/docs/third-party.md"
 assert_missing "$t2/.agents/skills/add-module"
+assert_eq "$(cat "$t2/AGENTS.md")" "project contract from an older installation" "direct version 2 uninstall preserves root"
+assert_unowned "$t2" "AGENTS.md"
+own_existing_file "$t2" "AGENTS.md"
+own_existing_file "$t2" "CLAUDE.md"
 install_to forced-uninstall --target "$t2" --uninstall --force
 assert_missing "$t2/docs/architecture.md"
 assert_missing "$t2/$state"
@@ -306,6 +364,8 @@ assert_file "$t2/.agents/skills/retired-skill/notes.txt"
 assert_file "$t2/.agents/catalogs/another-catalog/.install-manifest"
 for where in .agents .github .cursor .claude; do assert_file "$t2/$where/skills/third-party/SKILL.md"; done
 assert_file "$t2/docs/third-party.md"
+assert_eq "$(cat "$t2/AGENTS.md")" "project contract from an older installation" "forced version 2 uninstall preserves root"
+assert_eq "$(cat "$t2/CLAUDE.md")" "@AGENTS.md" "forced version 2 uninstall preserves Claude root"
 
 section "unmanaged same-name skills, docs, roots, adapters, and hooks are never adopted"
 t3="$work/collisions"; mkdir -p "$t3"; git -C "$t3" init -q
@@ -340,6 +400,8 @@ assert_file "$t3/.agents/skills/add-module/SKILL.md"
 assert_file "$t3/.claude/skills/add-web-feature/SKILL.md"
 assert_file "$t3/.git/hooks/pre-commit"
 assert_file "$t3/docs/architecture.md"
+assert_eq "$(cat "$t3/AGENTS.md")" "foreign root" "unmanaged root survives forced uninstall"
+assert_eq "$(cat "$t3/CLAUDE.md")" "foreign Claude root" "unmanaged Claude root survives forced uninstall"
 
 section "automatic copy fallback, including ln implementations that emulate symlinks"
 mkdir -p "$work/no-links" "$work/emulated-links"
@@ -362,6 +424,8 @@ assert_same "$t4/.agents/skills/add-module/SKILL.md" "$t4/.claude/skills/add-mod
 assert_eq "$(find "$t4/.claude/skills" -type l | wc -l | tr -d ' ')" "0" "fallback has no symlinks"
 assert_missing "$t4/.github"
 assert_missing "$t4/.cursor"
+assert_grep "$t4/.claude/rules/csharp-async.md" "](../../.agents/rules/csharp/async.md)"
+assert_not_grep "$t4/.claude/rules/csharp-async.md" "CANONICAL_ASYNC_RULE_BODY"
 assert_file "$t4/.claude/skills/add-module/obsolete-resource.txt"
 rm "$catalog/skills/add-module/obsolete-resource.txt"
 printf '\nlocal shared edit\n' >> "$t4/.agents/skills/add-module/SKILL.md"
@@ -412,7 +476,10 @@ assert_missing "$t6/.claude/rules/web-routes.md"
 assert_missing "$t6/.github"
 assert_missing "$t6/.cursor"
 assert_file "$t6/.agents/rules/web/routes.md"
-printf '\nlocal contract edit\n' >> "$t6/AGENTS.md"
+assert_missing "$t6/AGENTS.md"
+assert_missing "$t6/CLAUDE.md"
+printf 'local contract edit\n' > "$t6/AGENTS.md"
+printf '@AGENTS.md\n' > "$t6/CLAUDE.md"
 install_to no-root --target "$t6" --source "$repo" --harness codex --packs reviewer --no-root --force
 assert_grep "$t6/AGENTS.md" "local contract edit"
 assert_missing "$t6/.claude/rules"
@@ -425,11 +492,12 @@ t7="$work/legacy"; mkdir -p "$t7/harness/docs" "$t7/harness/skills/add-module" "
 printf 'old docs\n' > "$t7/harness/docs/architecture.md"
 printf 'old skill\n' > "$t7/harness/skills/add-module/SKILL.md"
 printf 'old contract\n' > "$t7/AGENTS.md"
+printf '@AGENTS.md\n' > "$t7/CLAUDE.md"
 printf 'foreign vendor file\n' > "$t7/harness/foreign.txt"
 printf 'foreign project docs\n' > "$t7/docs/foreign.md"
 {
   printf '# agent-harness install manifest - generated by install.sh\n'
-  printf 'AGENTS.md\nharness/docs/architecture.md\nharness/skills/add-module/SKILL.md\n'
+  printf 'AGENTS.md\nCLAUDE.md\nharness/docs/architecture.md\nharness/skills/add-module/SKILL.md\n'
   for where in .agents .claude .github .cursor; do
     mkdir -p "$t7/$where/skills/add-module"
     printf 'old copied skill\n' > "$t7/$where/skills/add-module/SKILL.md"
@@ -449,6 +517,10 @@ assert_file "$t7/harness/foreign.txt"
 assert_file "$t7/docs/foreign.md"
 assert_file "$t7/docs/architecture.md"
 assert_file "$t7/$state"
+assert_eq "$(cat "$t7/AGENTS.md")" "old contract" "legacy migration preserves project root"
+assert_eq "$(cat "$t7/CLAUDE.md")" "@AGENTS.md" "legacy migration preserves Claude root"
+assert_unowned "$t7" "AGENTS.md"
+assert_unowned "$t7" "CLAUDE.md"
 assert_missing "$t7/.github/skills"
 assert_missing "$t7/.cursor/skills"
 assert_grep "$t7/.agents/skills/add-module/SKILL.md" "^name: add-module$"
@@ -462,11 +534,11 @@ assert_file "$t8/docs/architecture.md"
 assert_links_resolve "$t8"
 
 section "force never deletes a directory substituted for an owned file"
-rm "$t8/docs/usage.md"
-mkdir "$t8/docs/usage.md"
-printf 'foreign data\n' > "$t8/docs/usage.md/data"
+rm "$t8/docs/operations.md"
+mkdir "$t8/docs/operations.md"
+printf 'foreign data\n' > "$t8/docs/operations.md/data"
 install_to directory-collision --target "$t8" --harness codex --force
-assert_eq "$(cat "$t8/docs/usage.md/data")" "foreign data" "directory content preserved"
+assert_eq "$(cat "$t8/docs/operations.md/data")" "foreign data" "directory content preserved"
 assert_grep "$work/directory-collision.log" "directory or special file"
 
 section "failed installation retains ownership for a safe retry"
@@ -476,7 +548,7 @@ cat > "$work/failing-mv/mv" <<SH
 #!/usr/bin/env bash
 last=""
 for arg in "\$@"; do last="\$arg"; done
-case "\$last" in */docs/usage.md) printf 'simulated write failure\n' >&2; exit 7 ;; esac
+case "\$last" in */docs/operations.md) printf 'simulated write failure\n' >&2; exit 7 ;; esac
 exec "$real_mv" "\$@"
 SH
 chmod +x "$work/failing-mv/mv"
@@ -566,16 +638,32 @@ fi
 
 section "piped mode fetches the source instead of reusing the working directory"
 t12="$work/piped"; mkdir -p "$t12"
-if (cd "$repo" && HARNESS_REPO="$repo" bash -s -- --target "$t12" --harness codex < "$installer") > "$work/piped.log" 2>&1; then ok "piped install exited zero"; else cat "$work/piped.log" >&2; ko "piped install failed"; fi
+# Fetch the current catalog files, not HEAD, so uncommitted payload changes are tested.
+piped_source="$work/fetched-catalog"; mkdir -p "$piped_source"
+for item in docs rules skills hooks templates LICENSE AGENTS.md CLAUDE.md .gitattributes; do cp -R "$repo/$item" "$piped_source/$item"; done
+git -C "$piped_source" init -q
+git -C "$piped_source" add .
+git -C "$piped_source" -c user.name="Installer tests" -c user.email="installer-tests@example.invalid" -c commit.gpgSign=false commit -qm "Installer source fixture" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+if (cd "$repo" && HARNESS_REPO="$piped_source" bash -s -- --target "$t12" --harness codex < "$installer") > "$work/piped.log" 2>&1; then ok "piped install exited zero"; else cat "$work/piped.log" >&2; ko "piped install failed"; fi
 assert_grep "$work/piped.log" "Fetching catalog from"
 assert_file "$t12/.agents/skills/add-vertical-slice/SKILL.md"
 assert_file "$t12/docs/architecture.md"
-assert_file "$t12/AGENTS.md"
+assert_missing "$t12/AGENTS.md"
 assert_missing "$t12/CLAUDE.md"
+assert_missing "$t12/docs/catalog"
+assert_missing "$t12/docs/install.md"
+assert_missing "$t12/docs/usage.md"
 assert_missing "$t12/.github"
 assert_missing "$t12/.cursor"
+if (cd "$t12" && ./.agents/hooks/scripts/guard-generated-files packages/api-client/src/v1.gen.ts) > "$work/piped-guard.log" 2>&1; then
+  ko "fetched guard allowed a generated-file edit"
+else
+  assert_eq "$?" "2" "fetched guard executes and rejects generated-file edits"
+  assert_grep "$work/piped-guard.log" "BLOCKED:"
+fi
 assert_links_resolve "$t12"
 
 # ---------------------------------------------------------------------------
+if [ "$SECONDS" -lt 60 ]; then ok "installer suite completed in under 60 seconds"; else ko "installer suite exceeded its budget (${SECONDS}s; must be under 60s)"; fi
 printf '\n%d passed, %d failed (%ss)\n' "$pass" "$fail" "$SECONDS"
 [ "$fail" = 0 ]

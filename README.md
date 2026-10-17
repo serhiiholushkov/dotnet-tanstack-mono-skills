@@ -6,13 +6,13 @@ Rules, skills, and hooks that equip any coding agent (Copilot, Claude Code, Code
 
 | Component                                                          | What it is                                                                                 | Loaded                      | Status |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | --------------------------- | ------ |
-| [AGENTS.md](AGENTS.md)                                             | The slim always-on contract: precedence, stack, commands, boundary digest, completion gate | Always                      | Ready  |
-| [CLAUDE.md](CLAUDE.md)                                             | Claude Code shim — imports `AGENTS.md`                                                     | Always (Claude)             | Ready  |
+| [AGENTS.md](AGENTS.md)                                             | This catalog repository's contract; never copied into consuming repositories              | This repository only        | Ready  |
+| [CLAUDE.md](CLAUDE.md)                                             | This repository's Claude Code shim — imports `AGENTS.md`                                  | This repository only        | Ready  |
 | [docs/architecture.md](docs/architecture.md)                       | The complete normative architecture every artifact cites                                   | On demand                   | Ready  |
 | [rules/](rules/README.md)                                          | Durable standards in seven opt-in packs, installed per agent role                          | Always (per installed pack) | Ready  |
 | [skills/](skills/README.md)                                        | Procedures for repeatable stack tasks: scaffold, plan, slice, module, migration, codegen, web feature, review, repair | When the task matches       | Ready  |
 | [hooks/](hooks/README.md)                                          | Deterministic guards (generated-file edits, contract drift, format, verify)                | On harness/git events       | Ready  |
-| [docs/usage.md](docs/usage.md), [docs/install.md](docs/install.md) | How to drive the framework; what `install.sh` generates per harness                        | Human reference             | Ready  |
+| [docs/catalog/usage.md](docs/catalog/usage.md), [docs/catalog/install.md](docs/catalog/install.md) | Repository-only usage and installation guides; excluded from installation | Human reference             | Ready  |
 | [templates/](templates/README.md)                                  | ADR, glossary, and feature-spec seeds for a consuming repository                           | Copied out                  | Ready  |
 | [install.sh](install.sh)                                           | One-command installer: shared skills, native adapters, ownership-aware updates             | Run per consuming repo      | Ready  |
 
@@ -46,14 +46,14 @@ Common variations:
 
 What it does, in one pass:
 
-1. Installs skills once in `<target>/.agents/skills/`, with neutral rules, hook scripts, and templates alongside them under `.agents/`. Project documentation goes in the root `docs/` directory, not an extra `harness/` tree.
-2. Writes root `AGENTS.md` and, for Claude, `CLAUDE.md` importing `@AGENTS.md`. Existing unmanaged files are left untouched, even with `--force`.
-3. Uses the shared skill location directly for Copilot, Codex, and Cursor. Claude receives relative per-skill symlinks, with an automatic copy fallback when real symlinks are unavailable. Native rule adapters still translate `applyTo` / `paths` / `globs`, and Markdown links are rewritten for the installed layout.
+1. Installs skills once in `<target>/.agents/skills/`, with neutral rules, hook scripts, and templates alongside them under `.agents/`. Harness documentation goes in the root `docs/` directory, not an extra `harness/` tree. Repository-only guides under `docs/catalog/` are excluded.
+2. Leaves root `AGENTS.md` and `CLAUDE.md` untouched. For a new application, [scaffold-workspace](skills/scaffold-workspace/SKILL.md) accepts the installed harness and creates project-specific contracts at the end, after validating the skeleton.
+3. Uses the shared skill location directly for Copilot, Codex, and Cursor. Claude receives relative per-skill symlinks, with an automatic copy fallback when real symlinks are unavailable. Native rule adapters translate `applyTo` / `paths` / `globs` and reference the shared rule bodies without duplicating them. Markdown links are rewritten for the installed layout.
 4. Records exact owned paths and content/link fingerprints in `.agents/catalogs/dotnet-tanstack-mono-skills/.install-manifest`. Updates and uninstall preserve local edits and unrelated files; force affects only previously owned paths.
 
 Edit shared skills and project docs directly; their local changes survive normal reinstalls. Old copy-based installations require explicit `--force` migration because their manifests have no fingerprints. For an old custom catalog directory, also supply its original `--dir`.
 
-Requirements: bash 3.2+ and standard Unix tools; `git` only when fetching the catalog. Full option reference: `./install.sh --help`; layout, update protection, and migration: [docs/install.md](docs/install.md).
+Requirements: bash 3.2+ and standard Unix tools; `git` only when fetching the catalog. Full option reference: `./install.sh --help`; layout, update protection, and migration: [docs/catalog/install.md](docs/catalog/install.md).
 
 ## What this framework deliberately excludes
 
@@ -65,12 +65,13 @@ Runtime software is out of scope for a template: memory vaults, continuous-learn
 dotnet-tanstack-mono-skills/
 ├── README.md            # this file
 ├── install.sh           # one-command installer (see Installation)
-├── AGENTS.md            # always-on contract
-├── CLAUDE.md            # @AGENTS.md import
+├── AGENTS.md            # this repository only; not installed
+├── CLAUDE.md            # this repository only; not installed
 ├── docs/
 │   ├── architecture.md  # the authority
-│   ├── usage.md         # driving the framework
-│   └── install.md       # what install.sh generates per harness
+│   └── catalog/         # repository-only documentation; not installed
+│       ├── usage.md     # driving the framework
+│       └── install.md   # what install.sh generates per harness
 ├── rules/               # seven packs + README
 ├── skills/              # eleven procedures + README
 ├── hooks/               # four guard scripts + README
