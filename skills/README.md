@@ -48,4 +48,6 @@ A full vertical runs top to bottom: plan → (module) → slice → migration �
 
 Edit the shared skill files in the consuming repository. Normal reinstalls preserve local edits; `--force` / `--hard` replaces only edited paths already owned by this catalog. Unmanaged skills, including same-name skills installed from another repository, are never overwritten. Fallback Claude copies refresh on reinstall rather than immediately.
 
-Details live in [../docs/install.md](../docs/install.md).
+The installer leaves root project contracts alone. Run [scaffold-workspace](scaffold-workspace/SKILL.md) in a new or harness-only repository to create the application and, as its final step, project-specific `AGENTS.md` and `CLAUDE.md` files.
+
+Details live in the repository-only [installation guide](https://github.com/serhiiholushkov/dotnet-tanstack-mono-skills/blob/main/docs/catalog/install.md).

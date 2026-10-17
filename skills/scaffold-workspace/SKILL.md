@@ -12,7 +12,8 @@ Version numbers shown in references are pinned examples — pin to the current L
 ## Before you start
 
 - **Toolchain.** Confirm `node --version` is 24.x, `corepack enable` has made `pnpm` available (the root `packageManager` field then pins the exact version), `dotnet --version` reports a 10.x SDK, and Docker is running. Missing prerequisites are reported to the user, not worked around — the pins exist so every machine builds the same thing.
-- **Target folder.** An empty directory, or a repository holding only `README`, `LICENSE`, and `.git`. If it already contains application code, this is not a scaffold task; stop and say so.
+- **Target folder.** An empty directory or a metadata-only repository, including `README`, `LICENSE`, `.git`, existing project instructions, and an installed harness (`.agents/`, `docs/`, and native `.claude/`, `.github/`, or `.cursor/` adapters). Preserve these assets; their presence is not application code. If the target already contains application code, this is not a scaffold task; stop and say so.
+- **Harness authority.** Read [the architecture](../../docs/architecture.md) before scaffolding. Installation supplies the shared catalog, not project root contracts; create those only in the final step below.
 - **Names.** Workspace packages use the `@repo/*` scope (`@repo/api`, `@repo/web`, `@repo/api-client`, …) regardless of product name — the scope is internal and the product name belongs in the first module, not the skeleton.
 
 ## Procedure
@@ -29,8 +30,14 @@ Version numbers shown in references are pinned examples — pin to the current L
    _Check:_ `pnpm dev` serves `:3000` and the app reaches the API through a server function.
 6. **CI** — [references/ci.md](references/ci.md): the workflow running install, restore, `pnpm verify` (lint, typecheck, test, build, drift check) with pnpm and .NET caching and a PostgreSQL service/Testcontainers support.
    _Check:_ workflow file lints (`act` or a draft PR).
-7. **First module** — do **not** invent one here. Run [add-module](../add-module/SKILL.md) for the first real business module, then [add-vertical-slice](../add-vertical-slice/SKILL.md) and [add-web-feature](../add-web-feature/SKILL.md) for the first vertical.
+7. **Feature-work handoff** — do **not** invent a module here. After completing the full gate and project contracts below, use [add-module](../add-module/SKILL.md) for the first real business module, then [add-vertical-slice](../add-vertical-slice/SKILL.md) and [add-web-feature](../add-web-feature/SKILL.md) for the first vertical.
 8. **Full gate** — `pnpm verify` passes end to end on the skeleton (with zero modules the OpenAPI documents still generate from the host's registered versions).
+9. **Project agent contracts** — create root `AGENTS.md` and `CLAUDE.md` only after the skeleton passes the full gate. Derive their guidance from this application, not the catalog repository's root files.
+   - In `AGENTS.md`, record the actual project purpose, workspace layout, verified setup/development/gate commands, pinning surfaces, architecture precedence, and relevant boundary/ADR rules. Link to the target's `docs/architecture.md`, `.agents/rules/README.md`, `.agents/skills/README.md`, `.agents/hooks/README.md`, and `.agents/templates/README.md`; do not use the catalog's source-layout paths (`rules/`, `skills/`, `hooks/`, `templates/`) or its repository-only installation/usage guides.
+   - Make `CLAUDE.md` import `@AGENTS.md`; add only genuinely Claude-specific project guidance, not a second copy of the contract.
+   - Preserve existing project instructions. If a root contract exists, propose the necessary merge and obtain approval before changing it; never blindly replace it with a template.
+   - Keep both contracts project-owned: do not add them to the harness installation manifest.
+   _Check:_ both contracts describe files and commands that now exist, every local Markdown link resolves from the project root, and `CLAUDE.md` imports that root `AGENTS.md`.
 
 ## Done when
 
@@ -39,4 +46,5 @@ Version numbers shown in references are pinned examples — pin to the current L
 - [ ] `turbo.json` encodes: `@repo/api#build` uncached with `openapi/*.json` outputs; `@repo/api-client#generate` depending on it with `$TURBO_ROOT$` inputs; `@repo/web#build` + `typecheck` depending on generate; `dev` persistent.
 - [ ] The drift check runs clean on the skeleton; generated files are git-tracked.
 - [ ] CI runs `pnpm verify` green.
+- [ ] Root `AGENTS.md` and `CLAUDE.md` were generated or explicitly merged at the end for this application, with valid installed-harness links, no copied catalog contract, and no installer ownership.
 - [ ] No business module or product code was invented — the skeleton is product-agnostic.
