@@ -41,16 +41,18 @@ Role combinations:
 
 ## Installation
 
-`install.sh` installs the neutral rule catalog once under `.agents/rules/` and generates native adapters for the selected packs (`--packs all | api | web | reviewer | <list>`), translating `appliesTo` per harness:
+`install.sh` installs the neutral rule catalog once under `.agents/rules/` and generates reference-only native adapters for the selected packs (`--packs all | api | web | reviewer | <list>`), translating `appliesTo` per harness:
 
 - **GitHub Copilot** — `.github/instructions/<pack>-<name>.instructions.md` with `applyTo`.
 - **Claude Code** — `.claude/rules/<pack>-<name>.md` with a `paths` list (omitted for `**/*` rules, which then load unconditionally).
 - **Codex and other AGENTS.md readers** — no scoped-rule mechanism; the packs stay in `.agents/rules/` and are reached through root `AGENTS.md` links.
 - **Cursor** — `.cursor/rules/<pack>-<name>.mdc` with `globs` + `alwaysApply`.
 
-Details and the manual equivalent live in [../docs/install.md](../docs/install.md).
+Each native adapter tells the agent to read and follow the canonical rule before working on matching files. The rule body lives only in `.agents/rules/`; the adapter contains scoping metadata and a relative reference, not a copy. These are agent-read references rather than guaranteed automatic prompt inclusion. Codex reaches the rules through the project contract created by `scaffold-workspace`, not a contract copied during installation.
 
-Prefer editing the neutral rules. Native adapters regenerate from the effective shared rules during reinstall; both shared rule edits and direct adapter edits are preserved with warnings unless `--force` / `--hard` is supplied. Unmanaged rules from other catalogs are never overwritten.
+Details and the manual equivalent live in the repository-only [installation guide](https://github.com/serhiiholushkov/dotnet-tanstack-mono-skills/blob/main/docs/catalog/install.md).
+
+Edit the neutral rule bodies; agents read those edits directly. Reinstall after changing rule metadata to refresh native scoping. Both shared rule edits and direct adapter edits are preserved with warnings unless `--force` / `--hard` is supplied. Unmanaged rules from other catalogs are never overwritten.
 
 ## Index
 
