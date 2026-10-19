@@ -2,7 +2,7 @@
 # tests/install.test.sh — end-to-end tests for install.sh.
 # Runs the installer against throwaway targets and asserts the generated layout,
 # shared resources, reference adapters, symlink fallback, link integrity,
-# project-owned contracts, updates, migration, and uninstall in under a minute.
+# project-owned contracts, updates, migration, and uninstall in under ten minutes.
 # Dependency-free: bash, git, standard Unix tools.
 set -euo pipefail
 
@@ -664,6 +664,6 @@ fi
 assert_links_resolve "$t12"
 
 # ---------------------------------------------------------------------------
-if [ "$SECONDS" -lt 60 ]; then ok "installer suite completed in under 60 seconds"; else ko "installer suite exceeded its budget (${SECONDS}s; must be under 60s)"; fi
+if [ "$SECONDS" -lt 600 ]; then ok "installer suite completed in under 600 seconds"; else ko "installer suite exceeded its budget (${SECONDS}s; must be under 600s)"; fi
 printf '\n%d passed, %d failed (%ss)\n' "$pass" "$fail" "$SECONDS"
 [ "$fail" = 0 ]

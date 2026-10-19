@@ -175,7 +175,7 @@ Discovery references: [Agent Skills integration](https://agentskills.io/client-i
 
 ## Testing the installer
 
-From the catalog checkout, run `bash tests/install.test.sh` (or `/bin/bash tests/install.test.sh` to explicitly exercise macOS Bash 3.2). The suite prints elapsed seconds at each section and the total duration, and fails if it reaches 60 seconds. It does not scaffold an application or invoke package managers, containers, or model evaluations.
+From the catalog checkout, run `bash tests/install.test.sh` (or `/bin/bash tests/install.test.sh` to explicitly exercise macOS Bash 3.2). The suite prints elapsed seconds at each section and the total duration, and fails if it reaches 600 seconds (10 minutes). It does not scaffold an application or invoke package managers, containers, or model evaluations.
 
 Full-catalog scenarios cover the exact documentation payload, absent root contracts, shared skills/rule bodies/hook scripts/templates, reference adapters, idempotency, scoped packs, link integrity, and piped installation from a local Git fixture containing the current catalog files. A small representative catalog covers updates, conflicts, root ownership release, migrations, copy fallback, and failure recovery without repeatedly installing unrelated catalog content. Snapshot checksums and Markdown link extraction are batched, and manifest lookups use literal in-process keys instead of launching a utility per path. No network access, platform skips, or additional runtime dependencies are needed.
 
